@@ -1,4 +1,4 @@
-package com.example.auth;
+package io.github.truscdo.mixauth;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;

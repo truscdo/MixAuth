@@ -1,4 +1,4 @@
-package com.example.auth;
+package io.github.truscdo.mixauth;
 
 public record AuthLocalizedText(
         String translationKey,

@@ -1,14 +1,14 @@
-package com.example.auth.validation;
+package io.github.truscdo.mixauth.validation;
 
-import com.example.auth.AuthServerConfig;
-import com.example.auth.AuthLocalizedText;
+import io.github.truscdo.mixauth.AuthServerConfig;
+import io.github.truscdo.mixauth.AuthLocalizedText;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.mojang.authlib.GameProfile;
 import com.mojang.authlib.properties.Property;
-import com.example.auth.LogUtil;
+import io.github.truscdo.mixauth.LogUtil;
 import net.minecraft.core.UUIDUtil;
 import net.minecraft.network.Connection;
 import net.minecraft.network.protocol.login.ClientboundHelloPacket;

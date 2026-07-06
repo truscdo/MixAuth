@@ -1,4 +1,4 @@
-package com.example.auth;
+package io.github.truscdo.mixauth;
 
 import net.minecraft.core.NonNullList;
 import net.minecraft.network.protocol.game.ClientboundContainerSetContentPacket;

@@ -1,4 +1,4 @@
-package com.example.auth;
+package io.github.truscdo.mixauth;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

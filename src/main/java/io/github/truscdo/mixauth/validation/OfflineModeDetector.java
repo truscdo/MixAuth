@@ -1,6 +1,6 @@
-package com.example.auth.validation;
+package io.github.truscdo.mixauth.validation;
 
-import com.example.auth.LogUtil;
+import io.github.truscdo.mixauth.LogUtil;
 import org.slf4j.Logger;
 
 import java.nio.charset.StandardCharsets;

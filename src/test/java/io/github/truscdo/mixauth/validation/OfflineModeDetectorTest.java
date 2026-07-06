@@ -1,4 +1,4 @@
-package com.example.auth.validation;
+package io.github.truscdo.mixauth.validation;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;

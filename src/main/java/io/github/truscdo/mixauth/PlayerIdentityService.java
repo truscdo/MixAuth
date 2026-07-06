@@ -1,4 +1,4 @@
-package com.example.auth;
+package io.github.truscdo.mixauth;
 
 import com.mojang.authlib.GameProfile;
 import net.minecraft.core.UUIDUtil;

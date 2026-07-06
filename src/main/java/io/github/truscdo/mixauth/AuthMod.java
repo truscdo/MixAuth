@@ -1,4 +1,4 @@
-package com.example.auth;
+package io.github.truscdo.mixauth;
 
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;

@@ -1,4 +1,4 @@
-package com.example.auth;
+package io.github.truscdo.mixauth;
 
 import net.minecraft.core.UUIDUtil;
 import org.slf4j.Logger;

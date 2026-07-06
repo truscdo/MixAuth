@@ -1,4 +1,4 @@
-package com.example.auth;
+package io.github.truscdo.mixauth;
 
 import at.favre.lib.crypto.bcrypt.BCrypt;
 import org.slf4j.Logger;
