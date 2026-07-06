@@ -1,0 +1,12 @@
+### Build outputs and generated runtime files
+.gradle/
+build/
+out/
+bin/
+run/
+repo/
+
+/.vscode
+/.eclipse
+
+/temp
