@@ -8,7 +8,7 @@ This mod has a direct goal:
 
 - Offline players can register a password and log in.
 - Premium players can complete Mojang online validation on an offline-mode server.
-- Unauthenticated players cannot move, interact, chat, or view their real inventory until authentication is complete.
+- Offline players cannot move, interact, chat, or view their real inventory until authentication is complete.
 
 ## Main Features
 
@@ -21,7 +21,7 @@ This mod has a direct goal:
 ### 2. Premium Account Validation
 
 - When a player connects, the mod actively starts premium handshake and Mojang session validation during the login phase.
-- If validation succeeds, the player continues login as a premium account.
+- If validation succeeds, the player continues login as a premium account, with the experience consistent with a premium server.
 - After a successful premium login, the player uses the premium UUID instead of the offline-mode server-generated UUID, ensuring that mods depending on premium UUIDs (e.g., Figura) work correctly.
 
 ### 3. Known Player List Management
@@ -29,7 +29,7 @@ This mod has a direct goal:
 - Every successful login (premium or offline) is recorded in the known player list, including UUID, username, and login mode.
 - On the next login, the player is routed directly according to their known mode, skipping the Mojang pre-check to avoid hitting API rate limits.
 - Administrators can use `auth mode set <username> <online|offline>` to manually specify a player's login mode.
-- If a player is in the list and marked as ONLINE, but premium validation fails, they are rejected immediately and cannot fall back to offline password login.
+- If a player is in the list and marked as ONLINE, but premium validation fails, they are rejected immediately.
 - Administrators can use `auth mode remove <username>` to remove a player from the known list, returning them to first-login state.
 
 ### 4. Passwordless Login Window
@@ -181,7 +181,7 @@ auto_detect_player_language = true
 | `offline_login.max_password_length` | Maximum password length (default 72, range 1–72). BCrypt input is limited to 72 bytes. |
 | `offline_login.password_blacklist_path` | Path to the external password blacklist file. File format is one password per line; lines starting with `#` are comments. When the file does not exist, it is automatically created from built-in resources on first startup. Relative paths are resolved from the server root. Default produces `auth/password_blacklist.txt`. |
 | `online_validation.connect_timeout_seconds` | Timeout for connecting to Mojang services. |
-| `online_validation.request_timeout_seconds` | Timeout for Mojang HTTP requests. |
+| `online_validation.request_timeout_seconds` | Timeout for Mojang service requests. |
 | `online_validation.pending_handshake_ttl_seconds` | Retention time for a pending premium handshake during the login phase. |
 | `localization.default_language` | Default prompt language. Currently supported values are `zh_cn` and `en_us`. |
 | `localization.auto_detect_player_language` | Whether prompts should switch between Chinese and English after login based on the client language. |
