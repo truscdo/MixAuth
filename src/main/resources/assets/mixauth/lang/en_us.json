@@ -20,7 +20,6 @@
     "auth.command.online_remove.success": "Removed %s from the online list.",
     "auth.command.online_remove.not_listed": "%s is not in the online list.",
     "auth.command.online_remove.failure": "Failed to remove from the online list: %s",
-    "auth.command.uuid.invalid": "Invalid UUID: %s",
     "auth.command.failure.internal": "internal server error; check the server logs",
     "auth.error.missing_username": "Username is required.",
     "auth.command.mode.player_not_found": "Player '%s' not found.",

@@ -20,7 +20,6 @@
     "auth.command.online_remove.success": "已将 %s 移出正版模式名单",
     "auth.command.online_remove.not_listed": "%s 不在正版模式名单中",
     "auth.command.online_remove.failure": "移除正版模式名单失败：%s",
-    "auth.command.uuid.invalid": "UUID 格式无效：%s",
     "auth.command.failure.internal": "服务器内部错误，请查看服务端日志",
     "auth.error.missing_username": "必须提供用户名",
     "auth.command.mode.player_not_found": "未找到玩家「%s」",

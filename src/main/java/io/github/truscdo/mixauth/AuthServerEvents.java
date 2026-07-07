@@ -58,29 +58,29 @@ public final class AuthServerEvents {
                                                 StringArgumentType.getString(context, "confirmPassword"))))))
                 .then(Commands.literal("setpassword")
                         .requires(source -> source.hasPermission(3))
-                        .then(Commands.argument("uuid", StringArgumentType.word())
+                        .then(Commands.argument("target", StringArgumentType.word())
                                 .then(Commands.argument("password", StringArgumentType.word())
                                         .then(Commands.argument("confirmPassword", StringArgumentType.word())
                                                 .executes(context -> setOfflinePassword(
                                                         context.getSource(),
-                                                        StringArgumentType.getString(context, "uuid"),
+                                                        StringArgumentType.getString(context, "target"),
                                                         StringArgumentType.getString(context, "password"),
                                                         StringArgumentType.getString(context,
                                                                 "confirmPassword")))))))
                 .then(Commands.literal("mode")
                         .requires(source -> source.hasPermission(3))
                         .then(Commands.literal("set")
-                                .then(Commands.argument("username", StringArgumentType.word())
+                                .then(Commands.argument("target", StringArgumentType.word())
                                         .then(Commands.argument("mode", StringArgumentType.word())
                                                 .executes(context -> setPlayerMode(
                                                         context.getSource(),
-                                                        StringArgumentType.getString(context, "username"),
+                                                        StringArgumentType.getString(context, "target"),
                                                         StringArgumentType.getString(context, "mode"))))))
                         .then(Commands.literal("remove")
-                                .then(Commands.argument("username", StringArgumentType.word())
+                                .then(Commands.argument("target", StringArgumentType.word())
                                         .executes(context -> removePlayerMode(
                                                 context.getSource(),
-                                                StringArgumentType.getString(context, "username"))))));
+                                                StringArgumentType.getString(context, "target"))))));
     }
 
     public static void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
@@ -123,11 +123,17 @@ public final class AuthServerEvents {
         OfflineAuthSessionService.beginPendingAuth(player, stage);
     }
 
-    private static int setPlayerMode(CommandSourceStack source, String username, String modeRaw) {
-        UUID playerUuid = resolvePlayerUuidByUsername(source, username);
+    private static int setPlayerMode(CommandSourceStack source, String target, String modeRaw) {
+        UUID playerUuid = tryParseUuid(target);
+        String username = null;
         if (playerUuid == null) {
-            return 0;
+            playerUuid = resolvePlayerUuidByUsername(source, target);
+            if (playerUuid == null) {
+                return 0;
+            }
+            username = target; // 通过用户名查到的，保留真实用户名
         }
+        final UUID resolvedUuid = playerUuid;
 
         OnlineAuthService.LoginMode mode = parseLoginMode(source, modeRaw);
         if (mode == null) {
@@ -143,8 +149,8 @@ public final class AuthServerEvents {
             source.sendSuccess(() -> AuthTranslations.componentForSource(
                     source,
                     "auth.command.mode.set.success",
-                    username,
-                    playerUuid,
+                    target,
+                    resolvedUuid,
                     modeText), true);
             return Command.SINGLE_SUCCESS;
         } catch (RuntimeException runtimeException) {
@@ -156,25 +162,29 @@ public final class AuthServerEvents {
         }
     }
 
-    private static int removePlayerMode(CommandSourceStack source, String username) {
-        UUID playerUuid = resolvePlayerUuidByUsername(source, username);
+    private static int removePlayerMode(CommandSourceStack source, String target) {
+        UUID playerUuid = tryParseUuid(target);
+        if (playerUuid == null) {
+            playerUuid = resolvePlayerUuidByUsername(source, target);
+        }
         if (playerUuid == null) {
             return 0;
         }
+        final UUID resolvedUuid = playerUuid;
 
         try {
-            boolean removed = KnownPlayerService.removeKnownPlayer(playerUuid);
+            boolean removed = KnownPlayerService.removeKnownPlayer(resolvedUuid);
             if (removed) {
                 source.sendSuccess(() -> AuthTranslations.componentForSource(
                         source,
                         "auth.command.mode.remove.success",
-                        username,
-                        playerUuid), true);
+                        target,
+                        resolvedUuid), true);
                 return Command.SINGLE_SUCCESS;
             }
 
             source.sendFailure(
-                    AuthTranslations.componentForSource(source, "auth.command.mode.remove.not_listed", username));
+                    AuthTranslations.componentForSource(source, "auth.command.mode.remove.not_listed", target));
             return 0;
         } catch (RuntimeException runtimeException) {
             source.sendFailure(AuthTranslations.componentForSource(
@@ -377,26 +387,30 @@ public final class AuthServerEvents {
         }
     }
 
-    private static int setOfflinePassword(CommandSourceStack source, String rawUuid, String password,
+    private static int setOfflinePassword(CommandSourceStack source, String target, String password,
             String confirmPassword) {
         if (!validatePasswordPair(source, password, confirmPassword)) {
             return 0;
         }
 
-        UUID playerUuid = parseUuid(source, rawUuid);
+        UUID playerUuid = tryParseUuid(target);
+        if (playerUuid == null) {
+            playerUuid = resolvePlayerUuidByUsername(source, target);
+        }
         if (playerUuid == null) {
             return 0;
         }
+        final UUID resolvedUuid = playerUuid;
 
         try {
-            OfflineAuthService.saveOfflinePassword(playerUuid, password);
-            OfflineAuthService.clearTrustedOfflineLogins(playerUuid);
+            OfflineAuthService.saveOfflinePassword(resolvedUuid, password);
+            OfflineAuthService.clearTrustedOfflineLogins(resolvedUuid);
             String language = AuthTranslations.resolveLanguage(source);
             source.sendSuccess(
                     () -> AuthTranslations.componentForSource(
                             source,
                             "auth.command.password_set.success",
-                            playerUuid,
+                            resolvedUuid,
                             OfflineAuthService.describeTrustedLoginWindow(language)),
                     true);
             return Command.SINGLE_SUCCESS;
@@ -433,11 +447,13 @@ public final class AuthServerEvents {
         return true;
     }
 
-    private static UUID parseUuid(CommandSourceStack source, String rawUuid) {
+    /**
+     * 静默尝试将字符串解析为 UUID，不输出任何消息。
+     */
+    private static UUID tryParseUuid(String raw) {
         try {
-            return UUID.fromString(rawUuid);
-        } catch (IllegalArgumentException illegalArgumentException) {
-            source.sendFailure(AuthTranslations.componentForSource(source, "auth.command.uuid.invalid", rawUuid));
+            return UUID.fromString(raw);
+        } catch (IllegalArgumentException e) {
             return null;
         }
     }
