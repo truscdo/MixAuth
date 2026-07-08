@@ -13,6 +13,7 @@ import java.sql.Statement;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 
 public final class AuthDatabase {
@@ -63,7 +64,7 @@ public final class AuthDatabase {
                 "Failed to remove known player") > 0;
     }
 
-    public record KnownPlayerEntry(UUID playerUuid, String loginMode) {
+    public record KnownPlayerEntry(UUID playerUuid, String username, String loginMode) {
     }
 
     public static List<KnownPlayerEntry> findKnownPlayersByUsername(String username) {
@@ -72,18 +73,47 @@ public final class AuthDatabase {
         }
 
         return executeQuery(
-                "SELECT player_uuid, login_mode FROM known_players WHERE username = ?",
+                "SELECT player_uuid, username, login_mode FROM known_players WHERE username = ?",
                 stmt -> stmt.setString(1, username),
                 rs -> {
                     List<KnownPlayerEntry> results = new ArrayList<>();
                     while (rs.next()) {
                         results.add(new KnownPlayerEntry(
                                 UUID.fromString(rs.getString("player_uuid")),
+                                rs.getString("username"),
                                 rs.getString("login_mode")));
                     }
                     return results;
                 },
                 "Failed to look up known players by username");
+    }
+
+    public static List<KnownPlayerEntry> findKnownPlayersByPrefix(String prefix, int limit) {
+        if (prefix == null || prefix.isBlank()) {
+            return List.of();
+        }
+
+        String pattern = prefix.toLowerCase(Locale.ROOT) + "%";
+        return executeQuery(
+                "SELECT player_uuid, username, login_mode FROM known_players " +
+                "WHERE LOWER(username) LIKE ? OR LOWER(player_uuid) LIKE ? " +
+                "ORDER BY username LIMIT ?",
+                stmt -> {
+                    stmt.setString(1, pattern);
+                    stmt.setString(2, pattern);
+                    stmt.setInt(3, limit);
+                },
+                rs -> {
+                    List<KnownPlayerEntry> results = new ArrayList<>();
+                    while (rs.next()) {
+                        results.add(new KnownPlayerEntry(
+                                UUID.fromString(rs.getString("player_uuid")),
+                                rs.getString("username"),
+                                rs.getString("login_mode")));
+                    }
+                    return results;
+                },
+                "Failed to find known players by prefix");
     }
 
     public static boolean isOfflineRegistered(UUID playerUuid) {

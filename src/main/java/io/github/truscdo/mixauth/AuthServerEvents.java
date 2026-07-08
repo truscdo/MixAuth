@@ -3,6 +3,8 @@ package io.github.truscdo.mixauth;
 import com.mojang.brigadier.Command;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
+import com.mojang.brigadier.suggestion.SuggestionProvider;
+import com.mojang.brigadier.suggestion.Suggestions;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
@@ -19,6 +21,39 @@ import java.util.UUID;
 
 public final class AuthServerEvents {
     private static final Logger LOGGER = LogUtil.getLogger();
+
+    private static final SuggestionProvider<CommandSourceStack> KNOWN_PLAYERS =
+        (context, builder) -> {
+            String remaining = builder.getRemaining().toLowerCase(Locale.ROOT);
+            if (remaining.isEmpty()) {
+                return Suggestions.empty();
+            }
+            List<AuthDatabase.KnownPlayerEntry> entries =
+                    AuthDatabase.findKnownPlayersByPrefix(remaining, 20);
+            if (entries == null || entries.isEmpty()) {
+                return Suggestions.empty();
+            }
+            for (var entry : entries) {
+                String tooltip = entry.username() + " (" + entry.playerUuid() + ")";
+                Component tooltipComponent = Component.literal(tooltip);
+                String usernameLower = entry.username().toLowerCase(Locale.ROOT);
+                String uuidStr = entry.playerUuid().toString().toLowerCase(Locale.ROOT);
+                if (usernameLower.startsWith(remaining)) {
+                    builder.suggest(entry.username(), tooltipComponent);
+                } else if (uuidStr.startsWith(remaining)) {
+                    builder.suggest(uuidStr, tooltipComponent);
+                }
+            }
+            return builder.buildFuture();
+        };
+
+    private static final SuggestionProvider<CommandSourceStack> LOGIN_MODES =
+        (context, builder) -> {
+            String remaining = builder.getRemaining().toLowerCase(Locale.ROOT);
+            if ("online".startsWith(remaining)) builder.suggest("online");
+            if ("offline".startsWith(remaining)) builder.suggest("offline");
+            return builder.buildFuture();
+        };
 
     private AuthServerEvents() {
     }
@@ -71,13 +106,16 @@ public final class AuthServerEvents {
                         .requires(source -> source.hasPermission(3))
                         .then(Commands.literal("set")
                                 .then(Commands.argument("target", StringArgumentType.word())
+                                        .suggests(KNOWN_PLAYERS)
                                         .then(Commands.argument("mode", StringArgumentType.word())
+                                                .suggests(LOGIN_MODES)
                                                 .executes(context -> setPlayerMode(
                                                         context.getSource(),
                                                         StringArgumentType.getString(context, "target"),
                                                         StringArgumentType.getString(context, "mode"))))))
                         .then(Commands.literal("remove")
                                 .then(Commands.argument("target", StringArgumentType.word())
+                                        .suggests(KNOWN_PLAYERS)
                                         .executes(context -> removePlayerMode(
                                                 context.getSource(),
                                                 StringArgumentType.getString(context, "target"))))));
