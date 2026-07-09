@@ -35,6 +35,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.lang.reflect.Field;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 @Mixin(ServerLoginPacketListenerImpl.class)
 abstract class ServerLoginPacketListenerImplMixin {
@@ -117,8 +118,24 @@ abstract class ServerLoginPacketListenerImplMixin {
         }
 
         // 3. 未知玩家，执行预检查
-        OnlineHandshakeValidationService.requestPreLoginCheck(packet)
-                .whenComplete((result, throwable) -> this.server.execute(() -> auth$finishPreLoginCheck(packet, result, throwable)));
+        CompletableFuture.runAsync(() -> {
+            var result = OnlineHandshakeValidationService.syncPreLoginCheck(
+                    packet.name(), packet.profileId());
+
+            this.server.execute(() -> {
+                if (auth$disconnected) return;
+
+                switch (result) {
+                    case PreLoginCheckResult.Online r -> auth$beginOnlineHandshake(packet);
+                    case PreLoginCheckResult.Offline r -> {
+                        AUTH_LOGGER.info("auth precheck routing {} to offline login", r.username());
+                        auth$finishOfflineOrReject(r.username());
+                    }
+                    case PreLoginCheckResult.Disconnect r -> auth$disconnectBeforeHandshake(
+                            r.username(), r.requestedProfileId(), r.reason());
+                }
+            });
+        });
     }
 
     @Inject(method = "handleKey", at = @At("HEAD"), cancellable = true)
@@ -159,33 +176,6 @@ abstract class ServerLoginPacketListenerImplMixin {
         this.auth$disconnected = true;
         this.auth$requestedProfileId = null;
         OnlineHandshakeValidationService.clear(this.connection);
-    }
-
-    @Unique
-    private void auth$finishPreLoginCheck(ServerboundHelloPacket packet, PreLoginCheckResult result, Throwable throwable) {
-        if (this.auth$disconnected) {
-            return;
-        }
-
-        if (throwable != null) {
-            AUTH_LOGGER.error("Mojang profile precheck completed exceptionally for {}", packet.name(), throwable);
-            auth$disconnectBeforeHandshake(packet.name(), packet.profileId(), AuthLocalizedText.of("auth.validation.reason.precheck_async_failure"));
-            return;
-        }
-
-        if (result == null) {
-            auth$disconnectBeforeHandshake(packet.name(), packet.profileId(), AuthLocalizedText.of("auth.validation.reason.missing_precheck_result"));
-            return;
-        }
-
-        switch (result.action()) {
-            case ONLINE -> auth$beginOnlineHandshake(packet);
-            case OFFLINE -> {
-                AUTH_LOGGER.info("auth precheck routing {} to offline login: {}", result.username(), auth$failureText(result.failureReason()));
-                auth$finishOfflineOrReject(result.username(), result.requestedProfileId(), result.failureReason());
-            }
-            case DISCONNECT -> auth$disconnectBeforeHandshake(result.username(), result.requestedProfileId(), result.failureReason());
-        }
     }
 
     @Unique
@@ -236,7 +226,7 @@ abstract class ServerLoginPacketListenerImplMixin {
     }
 
     @Unique
-    private void auth$finishOfflineOrReject(String username, UUID requestedProfileId, AuthLocalizedText failureReason) {
+    private void auth$finishOfflineOrReject(String username) {
         if (username == null || username.isBlank()) {
             this.disconnect(AuthTranslations.componentForConfiguredLanguage("auth.validation.failed_before_username"));
             return;
