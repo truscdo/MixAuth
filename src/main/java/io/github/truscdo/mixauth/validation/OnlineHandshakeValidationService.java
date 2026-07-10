@@ -192,10 +192,11 @@ public final class OnlineHandshakeValidationService {
 
     public static PreLoginCheckResult syncPreLoginCheck(String username, UUID requestedProfileId) {
         if (username == null || username.isBlank()) {
+            LOGGER.warn("syncPreLoginCheck called with empty username, disconnecting");
             return new PreLoginCheckResult.Disconnect(
                     username,
                     requestedProfileId,
-                    AuthLocalizedText.of("auth.validation.reason.missing_login_start_username"));
+                    AuthLocalizedText.of("auth.validation.reason.missing_username"));
         }
 
         try {
@@ -215,26 +216,30 @@ public final class OnlineHandshakeValidationService {
                 return new PreLoginCheckResult.Offline(username);
             }
             if (statusCode == 429) {
+                LOGGER.warn("Mojang profile lookup rate limited for {} (HTTP 429)", username);
                 return new PreLoginCheckResult.Disconnect(
                         username, requestedProfileId,
-                        AuthLocalizedText.of("auth.validation.reason.profile_lookup_rate_limited"));
+                        AuthLocalizedText.of("auth.validation.reason.mojang_api_unavailable"));
             }
             if (statusCode >= 500) {
+                LOGGER.warn("Mojang profile lookup returned server error {} for {}", statusCode, username);
                 return new PreLoginCheckResult.Disconnect(
                         username, requestedProfileId,
-                        AuthLocalizedText.of("auth.validation.reason.profile_lookup_http", statusCode));
+                        AuthLocalizedText.of("auth.validation.reason.mojang_api_unavailable"));
             }
             if (statusCode != 200) {
+                LOGGER.warn("Mojang profile lookup returned unexpected status {} for {}", statusCode, username);
                 return new PreLoginCheckResult.Disconnect(
                         username, requestedProfileId,
-                        AuthLocalizedText.of("auth.validation.reason.profile_lookup_unexpected_http", statusCode));
+                        AuthLocalizedText.of("auth.validation.reason.mojang_api_unavailable"));
             }
 
             GameProfile profile = parseGameProfile(body, username);
             if (profile == null || profile.getId() == null) {
+                LOGGER.warn("Mojang profile lookup returned malformed profile data for {} (HTTP 200, parse failed)", username);
                 return new PreLoginCheckResult.Disconnect(
                         username, requestedProfileId,
-                        AuthLocalizedText.of("auth.validation.reason.profile_lookup_malformed_profile"));
+                        AuthLocalizedText.of("auth.validation.reason.mojang_data_error"));
             }
             if (!requestedProfileId.equals(profile.getId())) {
                 return new PreLoginCheckResult.Offline(username);
@@ -248,15 +253,15 @@ public final class OnlineHandshakeValidationService {
             Thread.currentThread().interrupt();
             LOGGER.error("Interrupted while looking up Mojang profile for {}", username, e);
             return new PreLoginCheckResult.Disconnect(username, requestedProfileId,
-                    AuthLocalizedText.of("auth.validation.reason.profile_lookup_interrupted"));
+                    AuthLocalizedText.of("auth.validation.reason.mojang_api_unavailable"));
         } catch (IOException e) {
             LOGGER.error("I/O failure while looking up Mojang profile for {}", username, e);
             return new PreLoginCheckResult.Disconnect(username, requestedProfileId,
-                    AuthLocalizedText.of("auth.validation.reason.profile_lookup_io_failure"));
+                    AuthLocalizedText.of("auth.validation.reason.mojang_api_unavailable"));
         } catch (RuntimeException e) {
             LOGGER.error("Unexpected error while looking up Mojang profile for {}", username, e);
             return new PreLoginCheckResult.Disconnect(username, requestedProfileId,
-                    AuthLocalizedText.of("auth.validation.reason.profile_lookup_io_failure"));
+                    AuthLocalizedText.of("auth.validation.reason.mojang_api_unavailable"));
         }
     }
 
@@ -271,19 +276,23 @@ public final class OnlineHandshakeValidationService {
             boolean success = statusCode == 200;
             GameProfile profile = success ? parseGameProfile(body, username) : null;
 
+            if (!success) {
+                LOGGER.warn("Session server returned HTTP {} for {} (expected 200)", statusCode, username);
+            }
+
             if (success && profile == null) {
                 LOGGER.error("Session server returned malformed profile data for {}", username);
                 return new HasJoinedResult(username, statusCode, body, false,
-                        AuthLocalizedText.of("auth.validation.reason.session_profile_malformed"), null);
+                        AuthLocalizedText.of("auth.validation.reason.mojang_data_error"), null);
             }
 
             return new HasJoinedResult(username, statusCode, body, success, null, profile);
         }, "requesting session validation for " + username,
                 type -> switch (type) {
                     case INTERRUPTED -> new HasJoinedResult(username, 0, "", false,
-                            AuthLocalizedText.of("auth.validation.reason.session_validation_interrupted"), null);
+                            AuthLocalizedText.of("auth.validation.reason.mojang_api_unavailable"), null);
                     case IO_FAILURE -> new HasJoinedResult(username, 0, "", false,
-                            AuthLocalizedText.of("auth.validation.reason.session_validation_io_failure"), null);
+                            AuthLocalizedText.of("auth.validation.reason.mojang_api_unavailable"), null);
                 });
     }
 
@@ -390,7 +399,7 @@ public final class OnlineHandshakeValidationService {
                     null,
                     "",
                     false,
-                    AuthLocalizedText.of("auth.validation.reason.challenge_validation_failed"),
+                    AuthLocalizedText.of("auth.validation.reason.client_verification_failed"),
                     0L);
         }
 
@@ -410,7 +419,7 @@ public final class OnlineHandshakeValidationService {
                     null,
                     "",
                     false,
-                    AuthLocalizedText.of("auth.validation.reason.missing_pending_state"),
+                    AuthLocalizedText.of("auth.validation.reason.client_verification_failed"),
                     0L);
         }
     }
