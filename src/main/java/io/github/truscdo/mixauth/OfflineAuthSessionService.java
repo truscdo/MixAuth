@@ -71,27 +71,27 @@ public final class OfflineAuthSessionService {
 
     static void beginPendingAuth(ServerPlayer player, OfflineAuthStage stage) {
         PendingOfflineAuth pendingOfflineAuth = new PendingOfflineAuth(player, stage);
-        PENDING_OFFLINE_AUTHS.put(player.getUUID(), pendingOfflineAuth);
+        PENDING_OFFLINE_AUTHS.put(player.getGameProfile().getId(), pendingOfflineAuth);
         applyPendingRestrictions(player, pendingOfflineAuth);
         spoofInventoryView(player, pendingOfflineAuth);
         sendAuthPrompt(player, stage);
     }
 
     static PendingOfflineAuth getPendingAuth(ServerPlayer player) {
-        return PENDING_OFFLINE_AUTHS.get(player.getUUID());
+        return PENDING_OFFLINE_AUTHS.get(player.getGameProfile().getId());
     }
 
     static void completeAuthentication(ServerPlayer player, String messageKey, Object... args) {
-        PendingOfflineAuth pendingOfflineAuth = clearPendingAuth(player);
-        if (pendingOfflineAuth != null) {
-            restoreInventoryView(player);
-        }
+        clearPendingAuth(player);
+        restoreInventoryView(player);
         player.sendSystemMessage(AuthTranslations.componentForPlayer(player, messageKey, args));
     }
 
     static PendingOfflineAuth clearPendingAuth(ServerPlayer player) {
-        PendingOfflineAuth pendingOfflineAuth = PENDING_OFFLINE_AUTHS.remove(player.getUUID());
+        PendingOfflineAuth pendingOfflineAuth = PENDING_OFFLINE_AUTHS.remove(player.getGameProfile().getId());
         if (pendingOfflineAuth == null) {
+            LogUtil.getLogger().warn("Attempted to complete authentication for player {} who has no pending auth",
+                    player.getGameProfile().getName());
             return null;
         }
 
@@ -128,7 +128,7 @@ public final class OfflineAuthSessionService {
         long now = System.currentTimeMillis();
         Set<UUID> onlinePlayers = new HashSet<>();
         for (ServerPlayer player : event.getServer().getPlayerList().getPlayers()) {
-            UUID playerUuid = player.getUUID();
+            UUID playerUuid = player.getGameProfile().getId();
             onlinePlayers.add(playerUuid);
             PendingOfflineAuth pendingOfflineAuth = PENDING_OFFLINE_AUTHS.get(playerUuid);
             if (pendingOfflineAuth == null) {
@@ -137,7 +137,8 @@ public final class OfflineAuthSessionService {
 
             if (pendingOfflineAuth.stage == OfflineAuthStage.LOGIN && now >= pendingOfflineAuth.loginDeadlineAtMillis) {
                 clearPendingAuth(player);
-                player.connection.disconnect(AuthTranslations.componentForPlayer(player, "auth.error.offline_login_timeout"));
+                player.connection
+                        .disconnect(AuthTranslations.componentForPlayer(player, "auth.error.offline_login_timeout"));
                 continue;
             }
 
@@ -184,78 +185,96 @@ public final class OfflineAuthSessionService {
     }
 
     public static void onAttackEntity(AttackEntityEvent event) {
-        if (!(event.getEntity() instanceof ServerPlayer player)) return;
+        if (!(event.getEntity() instanceof ServerPlayer player))
+            return;
         PendingOfflineAuth pendingOfflineAuth = guardPendingAuth(player);
-        if (pendingOfflineAuth == null) return;
+        if (pendingOfflineAuth == null)
+            return;
         event.setCanceled(true);
         denyPendingAction(player, pendingOfflineAuth, "auth.error.cannot_attack_or_interact_before_login");
     }
 
     public static void onEntityInteractSpecific(PlayerInteractEvent.EntityInteractSpecific event) {
-        if (!(event.getEntity() instanceof ServerPlayer player)) return;
+        if (!(event.getEntity() instanceof ServerPlayer player))
+            return;
         PendingOfflineAuth pendingOfflineAuth = guardPendingAuth(player);
-        if (pendingOfflineAuth == null) return;
+        if (pendingOfflineAuth == null)
+            return;
         event.setCancellationResult(InteractionResult.FAIL);
         event.setCanceled(true);
         denyPendingAction(player, pendingOfflineAuth, "auth.error.cannot_attack_or_interact_before_login");
     }
 
     public static void onEntityInteract(PlayerInteractEvent.EntityInteract event) {
-        if (!(event.getEntity() instanceof ServerPlayer player)) return;
+        if (!(event.getEntity() instanceof ServerPlayer player))
+            return;
         PendingOfflineAuth pendingOfflineAuth = guardPendingAuth(player);
-        if (pendingOfflineAuth == null) return;
+        if (pendingOfflineAuth == null)
+            return;
         event.setCancellationResult(InteractionResult.FAIL);
         event.setCanceled(true);
         denyPendingAction(player, pendingOfflineAuth, "auth.error.cannot_attack_or_interact_before_login");
     }
 
     public static void onRightClickBlock(PlayerInteractEvent.RightClickBlock event) {
-        if (!(event.getEntity() instanceof ServerPlayer player)) return;
+        if (!(event.getEntity() instanceof ServerPlayer player))
+            return;
         PendingOfflineAuth pendingOfflineAuth = guardPendingAuth(player);
-        if (pendingOfflineAuth == null) return;
+        if (pendingOfflineAuth == null)
+            return;
         event.setCancellationResult(InteractionResult.FAIL);
         event.setCanceled(true);
         denyPendingAction(player, pendingOfflineAuth, "auth.error.cannot_interact_blocks_items_before_login");
     }
 
     public static void onRightClickItem(PlayerInteractEvent.RightClickItem event) {
-        if (!(event.getEntity() instanceof ServerPlayer player)) return;
+        if (!(event.getEntity() instanceof ServerPlayer player))
+            return;
         PendingOfflineAuth pendingOfflineAuth = guardPendingAuth(player);
-        if (pendingOfflineAuth == null) return;
+        if (pendingOfflineAuth == null)
+            return;
         event.setCancellationResult(InteractionResult.FAIL);
         event.setCanceled(true);
         denyPendingAction(player, pendingOfflineAuth, "auth.error.cannot_interact_blocks_items_before_login");
     }
 
     public static void onLeftClickBlock(PlayerInteractEvent.LeftClickBlock event) {
-        if (!(event.getEntity() instanceof ServerPlayer player)) return;
+        if (!(event.getEntity() instanceof ServerPlayer player))
+            return;
         PendingOfflineAuth pendingOfflineAuth = guardPendingAuth(player);
-        if (pendingOfflineAuth == null) return;
+        if (pendingOfflineAuth == null)
+            return;
         event.setCanceled(true);
         denyPendingAction(player, pendingOfflineAuth, "auth.error.cannot_interact_blocks_items_before_login");
     }
 
     public static void onUseItemOnBlock(UseItemOnBlockEvent event) {
-        if (!(event.getPlayer() instanceof ServerPlayer player)) return;
+        if (!(event.getPlayer() instanceof ServerPlayer player))
+            return;
         PendingOfflineAuth pendingOfflineAuth = guardPendingAuth(player);
-        if (pendingOfflineAuth == null) return;
+        if (pendingOfflineAuth == null)
+            return;
         event.cancelWithResult(ItemInteractionResult.FAIL);
         denyPendingAction(player, pendingOfflineAuth, "auth.error.cannot_interact_blocks_items_before_login");
     }
 
     public static void onItemToss(ItemTossEvent event) {
-        if (!(event.getPlayer() instanceof ServerPlayer player)) return;
+        if (!(event.getPlayer() instanceof ServerPlayer player))
+            return;
         PendingOfflineAuth pendingOfflineAuth = guardPendingAuth(player);
-        if (pendingOfflineAuth == null) return;
+        if (pendingOfflineAuth == null)
+            return;
         event.setCanceled(true);
         spoofInventoryView(player, pendingOfflineAuth);
         denyPendingAction(player, pendingOfflineAuth, "auth.error.cannot_drop_before_login");
     }
 
     public static void onPlayerContainerOpen(PlayerContainerEvent.Open event) {
-        if (!(event.getEntity() instanceof ServerPlayer player)) return;
+        if (!(event.getEntity() instanceof ServerPlayer player))
+            return;
         PendingOfflineAuth pendingOfflineAuth = guardPendingAuth(player);
-        if (pendingOfflineAuth == null) return;
+        if (pendingOfflineAuth == null)
+            return;
 
         if (event.getContainer() == player.inventoryMenu) {
             spoofInventoryView(player, pendingOfflineAuth);
@@ -268,9 +287,11 @@ public final class OfflineAuthSessionService {
     }
 
     public static void onItemStackedOnOther(ItemStackedOnOtherEvent event) {
-        if (!(event.getPlayer() instanceof ServerPlayer player)) return;
+        if (!(event.getPlayer() instanceof ServerPlayer player))
+            return;
         PendingOfflineAuth pendingOfflineAuth = guardPendingAuth(player);
-        if (pendingOfflineAuth == null) return;
+        if (pendingOfflineAuth == null)
+            return;
         event.setCanceled(true);
         spoofInventoryView(player, pendingOfflineAuth);
         denyPendingAction(player, pendingOfflineAuth, "auth.error.cannot_use_inventory_before_login");
@@ -282,8 +303,10 @@ public final class OfflineAuthSessionService {
         }
 
         ensureAuthBlindness(player);
-        if (player.distanceToSqr(pendingOfflineAuth.lockedX, pendingOfflineAuth.lockedY, pendingOfflineAuth.lockedZ) > LOCKED_POSITION_TOLERANCE_SQUARED) {
-            player.teleportTo(player.serverLevel(), pendingOfflineAuth.lockedX, pendingOfflineAuth.lockedY, pendingOfflineAuth.lockedZ, player.getYRot(), player.getXRot());
+        if (player.distanceToSqr(pendingOfflineAuth.lockedX, pendingOfflineAuth.lockedY,
+                pendingOfflineAuth.lockedZ) > LOCKED_POSITION_TOLERANCE_SQUARED) {
+            player.teleportTo(player.serverLevel(), pendingOfflineAuth.lockedX, pendingOfflineAuth.lockedY,
+                    pendingOfflineAuth.lockedZ, player.getYRot(), player.getXRot());
         }
 
         player.setDeltaMovement(Vec3.ZERO);
@@ -296,8 +319,7 @@ public final class OfflineAuthSessionService {
                 inventoryMenu.containerId,
                 inventoryMenu.getStateId(),
                 emptyItems,
-                ItemStack.EMPTY
-        ));
+                ItemStack.EMPTY));
         pendingOfflineAuth.nextInventorySpoofAtMillis = System.currentTimeMillis() + INVENTORY_SPOOF_INTERVAL_MILLIS;
     }
 
@@ -311,10 +333,12 @@ public final class OfflineAuthSessionService {
             return;
         }
 
-        player.addEffect(new MobEffectInstance(MobEffects.BLINDNESS, AUTH_BLINDNESS_DURATION_TICKS, 0, false, false, false));
+        player.addEffect(
+                new MobEffectInstance(MobEffects.BLINDNESS, AUTH_BLINDNESS_DURATION_TICKS, 0, false, false, false));
     }
 
-    private static void denyPendingAction(ServerPlayer player, PendingOfflineAuth pendingOfflineAuth, String translationKey, Object... args) {
+    private static void denyPendingAction(ServerPlayer player, PendingOfflineAuth pendingOfflineAuth,
+            String translationKey, Object... args) {
         long now = System.currentTimeMillis();
         if (now < pendingOfflineAuth.nextActionDeniedMessageAtMillis) {
             return;
@@ -329,7 +353,7 @@ public final class OfflineAuthSessionService {
      * 获取玩家的待处理认证状态。如果没有待处理认证，返回 null。
      */
     private static PendingOfflineAuth guardPendingAuth(ServerPlayer player) {
-        PendingOfflineAuth pending = PENDING_OFFLINE_AUTHS.get(player.getUUID());
+        PendingOfflineAuth pending = PENDING_OFFLINE_AUTHS.get(player.getGameProfile().getId());
         return pending;
     }
 
