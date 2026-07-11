@@ -126,7 +126,7 @@ public final class AuthServerEvents {
             return;
         }
 
-        UUID playerUuid = player.getUUID();
+        UUID playerUuid = player.getGameProfile().getId();
 
         OnlineAuthService.LoginMode loginMode = OnlineAuthService.consumeLoginMode(playerUuid);
         if (loginMode == null) {
@@ -296,7 +296,7 @@ public final class AuthServerEvents {
             return 0;
         }
 
-        UUID playerUuid = player.getUUID();
+        UUID playerUuid = player.getGameProfile().getId();
         OfflineAuthSessionService.PendingOfflineAuth pendingOfflineAuth = OfflineAuthSessionService
                 .getPendingAuth(player);
 
@@ -358,7 +358,7 @@ public final class AuthServerEvents {
             return 0;
         }
 
-        UUID playerUuid = player.getUUID();
+        UUID playerUuid = player.getGameProfile().getId();
         if (OfflineAuthService.verifyOfflinePassword(playerUuid, password)) {
             OfflineAuthService.clearOfflineLoginBlock(playerUuid);
             OfflineAuthService.recordTrustedOfflineLogin(playerUuid, resolveRemoteIp(player));
@@ -399,7 +399,7 @@ public final class AuthServerEvents {
             return 0;
         }
 
-        UUID playerUuid = player.getUUID();
+        UUID playerUuid = player.getGameProfile().getId();
         if (!OfflineAuthService.isOfflineRegistered(playerUuid)) {
             source.sendFailure(AuthTranslations.componentForSource(source, "auth.error.no_offline_password_register"));
             return 0;
