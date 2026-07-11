@@ -28,6 +28,9 @@ public final class AuthTranslations {
     static {
         LANGUAGES.put("zh_cn", "zh");
         LANGUAGES.put("en_us", "en");
+        LANGUAGES.put("es_es", "es");
+        LANGUAGES.put("pt_br", "pt");
+        LANGUAGES.put("ru_ru", "ru");
     }
 
     private static final Logger LOGGER = LogUtil.getLogger();
