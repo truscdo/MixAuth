@@ -89,7 +89,14 @@ dependencies {
             prefer '0.10.2'
         }
     }
+    jarJar(implementation(group: 'at.favre.lib', name: 'bytes')) {
+        version {
+            strictly '[1.0.0, 2.0.0)'
+            prefer '1.5.0'
+        }
+    }
     additionalRuntimeClasspath 'at.favre.lib:bcrypt:0.10.2'
+    additionalRuntimeClasspath 'at.favre.lib:bytes:1.5.0'
     jarJar(implementation(group: 'com.h2database', name: 'h2') {
         version {
             strictly '[2.1.210, 2.5.0)'
