@@ -9,12 +9,12 @@ import org.slf4j.Logger;
 
 @Mod(AuthMod.MODID)
 public final class AuthMod {
-    public static final String MODID = "auth";
+    public static final String MODID = "mixauth";
 
     private static final Logger LOGGER = LogUtil.getLogger();
 
     public AuthMod(ModContainer modContainer) {
-        modContainer.registerConfig(ModConfig.Type.SERVER, AuthServerConfig.SPEC, "auth-server.toml");
+        modContainer.registerConfig(ModConfig.Type.SERVER, AuthServerConfig.SPEC, "mixauth-server.toml");
 
         LOGGER.info("Loaded mod {}", MODID);
         LOGGER.info("Auth validation handshake interception enabled for offline mode servers");

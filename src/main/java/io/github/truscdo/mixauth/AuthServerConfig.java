@@ -113,7 +113,7 @@ public final class AuthServerConfig {
             databasePath = builder
                     .comment(
                             "H2 database base path. Relative paths are resolved from the server root; H2 creates <path>.mv.db.")
-                    .define("path", "auth/auth", AuthServerConfig::isNonBlankString);
+                    .define("path", "mixauth/mixauth", AuthServerConfig::isNonBlankString);
 
             builder.pop();
             builder.push("offline_login");
@@ -147,7 +147,7 @@ public final class AuthServerConfig {
             passwordBlacklistPath = builder
                     .comment(
                             "Path to an external password blacklist file, one password per line. Lines starting with # are skipped. If the file does not exist, the built-in blacklist is copied to this path on first load. Relative paths are resolved from the server root.")
-                    .define("password_blacklist_path", "auth/password_blacklist.txt");
+                    .define("password_blacklist_path", "mixauth/password_blacklist.txt");
 
             builder.pop();
             builder.push("online_validation");

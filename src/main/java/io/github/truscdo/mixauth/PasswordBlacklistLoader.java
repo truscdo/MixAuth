@@ -54,7 +54,7 @@ public final class PasswordBlacklistLoader {
     private static Path resolveBlacklistPath() {
         String configuredPath = AuthServerConfig.passwordBlacklistPath();
         if (configuredPath == null || configuredPath.isBlank()) {
-            return Path.of("auth", "password_blacklist.txt").normalize();
+            return Path.of("mixauth", "password_blacklist.txt").normalize();
         }
         return Path.of(configuredPath).normalize();
     }
