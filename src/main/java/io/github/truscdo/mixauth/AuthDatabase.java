@@ -96,8 +96,8 @@ public final class AuthDatabase {
         String pattern = prefix.toLowerCase(Locale.ROOT) + "%";
         return executeQuery(
                 "SELECT player_uuid, username, login_mode FROM known_players " +
-                "WHERE LOWER(username) LIKE ? OR LOWER(player_uuid) LIKE ? " +
-                "ORDER BY username LIMIT ?",
+                        "WHERE LOWER(username) LIKE ? OR LOWER(player_uuid) LIKE ? " +
+                        "ORDER BY username LIMIT ?",
                 stmt -> {
                     stmt.setString(1, pattern);
                     stmt.setString(2, pattern);
@@ -165,6 +165,17 @@ public final class AuthDatabase {
                 stmt -> stmt.setString(1, playerUuid.toString()),
                 rs -> rs.next() ? rs.getString("password_hash") : null,
                 "Failed to verify offline password");
+    }
+
+    public static boolean deleteOfflineUser(UUID playerUuid) {
+        if (playerUuid == null) {
+            return false;
+        }
+
+        return executeUpdate(
+                "DELETE FROM offline_users WHERE player_uuid = ?",
+                stmt -> stmt.setString(1, playerUuid.toString()),
+                "Failed to delete offline user") > 0;
     }
 
     public static void saveOfflinePassword(UUID playerUuid, String passwordHash) {

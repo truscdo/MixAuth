@@ -28,9 +28,9 @@ This mod has a direct goal:
 
 - Every successful login (premium or offline) is recorded in the known player list, including UUID, username, and login mode.
 - On the next login, the player is routed directly according to their known mode, skipping the Mojang pre-check to avoid hitting API rate limits.
-- Administrators can use `auth mode set <UUID|username> <online|offline>` to manually specify a player's login mode.
+- Administrators can use `auth setmode <UUID|username> <online|offline>` to manually specify a player's login mode.
 - If a player is in the list and marked as ONLINE, but premium validation fails, they are rejected immediately.
-- Administrators can use `auth mode remove <UUID|username>` to remove a player from the known list, returning them to first-login state.
+- Administrators can use `auth remove <UUID|username>` to completely remove all stored data for a player (known player list, offline password, login blocks, and passwordless login records). The player will return to a first-login state on next join.
 
 ### 4. Passwordless Login Window
 
@@ -207,8 +207,8 @@ Additional notes:
 | Command | Description |
 | --- | --- |
 | `auth setpassword <UUID\|username> <password> <confirmPassword>` | Set or reset the offline password for the specified player. |
-| `auth mode set <UUID\|username> <online\|offline>` | Set the login mode for the specified player, forcing premium or offline login for future joins. |
-| `auth mode remove <UUID\|username>` | Remove the specified player from the known player list, returning them to first-login state. |
+| `auth setmode <UUID\|username> <online\|offline>` | Set the login mode for the specified player, forcing premium or offline login for future joins. |
+| `auth remove <UUID\|username>` | Completely remove all stored data for the specified player (known list, offline password, login blocks, passwordless records). They will return to a first-login state on next join. |
 
 ## Environment
 

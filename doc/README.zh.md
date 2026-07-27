@@ -28,9 +28,9 @@ For the English documentation, see [README.md](README.md).
 
 - 每位成功登录的玩家（无论正版或离线）会被记录到已知玩家名单中，包含 UUID、用户名和登录模式。
 - 下次登录时直接按已知模式路由，跳过 Mojang 预检查，避免触发 API 限流。
-- 管理员可通过 `auth mode set <UUID|用户名> <online|offline>` 手动指定某玩家的登录模式。
+- 管理员可通过 `auth setmode <UUID|用户名> <online|offline>` 手动指定某玩家的登录模式。
 - 位于名单中且标记为 ONLINE 的玩家，如果正版校验失败，将被直接拒绝登录。
-- 管理员可通过 `auth mode remove <UUID|用户名>` 从已知名单中移除记录，使其回到首次登录状态。
+- 管理员可通过 `auth remove <UUID|用户名>` 彻底清除该玩家的所有存储数据（已知名单、离线密码、封禁记录和免密登录记录）。下次加入服务器时将回到首次登录状态。
 
 ### 4. 免密登录窗口
 
@@ -207,8 +207,8 @@ auto_detect_player_language = true
 | 命令 | 说明 |
 | --- | --- |
 | `auth setpassword <UUID\|用户名> <密码> <确认密码>` | 为指定玩家设置或重置离线密码。 |
-| `auth mode set <UUID\|用户名> <online\|offline>` | 设置指定玩家的登录模式，强制其后续使用正版或离线方式登录。 |
-| `auth mode remove <UUID\|用户名>` | 从已知玩家名单中移除指定玩家，使其回到首次登录状态。 |
+| `auth setmode <UUID\|用户名> <online\|offline>` | 设置指定玩家的登录模式，强制其后续使用正版或离线方式登录。 |
+| `auth remove <UUID\|用户名>` | 彻底清除指定玩家的所有存储数据（已知名单、离线密码、封禁记录、免密记录）。下次加入服务器时将回到首次登录状态。 |
 
 ## 运行环境
 

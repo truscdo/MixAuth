@@ -22,38 +22,37 @@ import java.util.UUID;
 public final class AuthServerEvents {
     private static final Logger LOGGER = LogUtil.getLogger();
 
-    private static final SuggestionProvider<CommandSourceStack> KNOWN_PLAYERS =
-        (context, builder) -> {
-            String remaining = builder.getRemaining().toLowerCase(Locale.ROOT);
-            if (remaining.isEmpty()) {
-                return Suggestions.empty();
+    private static final SuggestionProvider<CommandSourceStack> KNOWN_PLAYERS = (context, builder) -> {
+        String remaining = builder.getRemaining().toLowerCase(Locale.ROOT);
+        if (remaining.isEmpty()) {
+            return Suggestions.empty();
+        }
+        List<AuthDatabase.KnownPlayerEntry> entries = AuthDatabase.findKnownPlayersByPrefix(remaining, 20);
+        if (entries == null || entries.isEmpty()) {
+            return Suggestions.empty();
+        }
+        for (var entry : entries) {
+            String tooltip = entry.username() + " (" + entry.playerUuid() + ")";
+            Component tooltipComponent = Component.literal(tooltip);
+            String usernameLower = entry.username().toLowerCase(Locale.ROOT);
+            String uuidStr = entry.playerUuid().toString().toLowerCase(Locale.ROOT);
+            if (usernameLower.startsWith(remaining)) {
+                builder.suggest(entry.username(), tooltipComponent);
+            } else if (uuidStr.startsWith(remaining)) {
+                builder.suggest(uuidStr, tooltipComponent);
             }
-            List<AuthDatabase.KnownPlayerEntry> entries =
-                    AuthDatabase.findKnownPlayersByPrefix(remaining, 20);
-            if (entries == null || entries.isEmpty()) {
-                return Suggestions.empty();
-            }
-            for (var entry : entries) {
-                String tooltip = entry.username() + " (" + entry.playerUuid() + ")";
-                Component tooltipComponent = Component.literal(tooltip);
-                String usernameLower = entry.username().toLowerCase(Locale.ROOT);
-                String uuidStr = entry.playerUuid().toString().toLowerCase(Locale.ROOT);
-                if (usernameLower.startsWith(remaining)) {
-                    builder.suggest(entry.username(), tooltipComponent);
-                } else if (uuidStr.startsWith(remaining)) {
-                    builder.suggest(uuidStr, tooltipComponent);
-                }
-            }
-            return builder.buildFuture();
-        };
+        }
+        return builder.buildFuture();
+    };
 
-    private static final SuggestionProvider<CommandSourceStack> LOGIN_MODES =
-        (context, builder) -> {
-            String remaining = builder.getRemaining().toLowerCase(Locale.ROOT);
-            if ("online".startsWith(remaining)) builder.suggest("online");
-            if ("offline".startsWith(remaining)) builder.suggest("offline");
-            return builder.buildFuture();
-        };
+    private static final SuggestionProvider<CommandSourceStack> LOGIN_MODES = (context, builder) -> {
+        String remaining = builder.getRemaining().toLowerCase(Locale.ROOT);
+        if ("online".startsWith(remaining))
+            builder.suggest("online");
+        if ("offline".startsWith(remaining))
+            builder.suggest("offline");
+        return builder.buildFuture();
+    };
 
     private AuthServerEvents() {
     }
@@ -102,23 +101,23 @@ public final class AuthServerEvents {
                                                         StringArgumentType.getString(context, "password"),
                                                         StringArgumentType.getString(context,
                                                                 "confirmPassword")))))))
-                .then(Commands.literal("mode")
+                .then(Commands.literal("setmode")
                         .requires(source -> source.hasPermission(3))
-                        .then(Commands.literal("set")
-                                .then(Commands.argument("target", StringArgumentType.word())
-                                        .suggests(KNOWN_PLAYERS)
-                                        .then(Commands.argument("mode", StringArgumentType.word())
-                                                .suggests(LOGIN_MODES)
-                                                .executes(context -> setPlayerMode(
-                                                        context.getSource(),
-                                                        StringArgumentType.getString(context, "target"),
-                                                        StringArgumentType.getString(context, "mode"))))))
-                        .then(Commands.literal("remove")
-                                .then(Commands.argument("target", StringArgumentType.word())
-                                        .suggests(KNOWN_PLAYERS)
-                                        .executes(context -> removePlayerMode(
+                        .then(Commands.argument("target", StringArgumentType.word())
+                                .suggests(KNOWN_PLAYERS)
+                                .then(Commands.argument("mode", StringArgumentType.word())
+                                        .suggests(LOGIN_MODES)
+                                        .executes(context -> setPlayerMode(
                                                 context.getSource(),
-                                                StringArgumentType.getString(context, "target"))))));
+                                                StringArgumentType.getString(context, "target"),
+                                                StringArgumentType.getString(context, "mode"))))))
+                .then(Commands.literal("remove")
+                        .requires(source -> source.hasPermission(3))
+                        .then(Commands.argument("target", StringArgumentType.word())
+                                .suggests(KNOWN_PLAYERS)
+                                .executes(context -> removePlayer(
+                                        context.getSource(),
+                                        StringArgumentType.getString(context, "target")))));
     }
 
     public static void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
@@ -200,7 +199,7 @@ public final class AuthServerEvents {
         }
     }
 
-    private static int removePlayerMode(CommandSourceStack source, String target) {
+    private static int removePlayer(CommandSourceStack source, String target) {
         UUID playerUuid = tryParseUuid(target);
         if (playerUuid == null) {
             playerUuid = resolvePlayerUuidByUsername(source, target);
@@ -211,24 +210,18 @@ public final class AuthServerEvents {
         final UUID resolvedUuid = playerUuid;
 
         try {
-            boolean removed = KnownPlayerService.removeKnownPlayer(resolvedUuid);
-            if (removed) {
-                source.sendSuccess(() -> AuthTranslations.componentForSource(
-                        source,
-                        "auth.command.mode.remove.success",
-                        target,
-                        resolvedUuid), true);
-                return Command.SINGLE_SUCCESS;
-            }
-
-            source.sendFailure(
-                    AuthTranslations.componentForSource(source, "auth.command.mode.remove.not_listed", target));
-            return 0;
+            KnownPlayerService.removeAllPlayerData(resolvedUuid);
+            source.sendSuccess(() -> AuthTranslations.componentForSource(
+                    source,
+                    "auth.command.remove.success",
+                    target,
+                    resolvedUuid), true);
+            return Command.SINGLE_SUCCESS;
         } catch (RuntimeException runtimeException) {
             source.sendFailure(AuthTranslations.componentForSource(
                     source,
-                    "auth.command.mode.remove.failure",
-                    describeCommandFailure(source, "removing player login mode", runtimeException)));
+                    "auth.command.remove.failure",
+                    describeCommandFailure(source, "removing all player data", runtimeException)));
             return 0;
         }
     }

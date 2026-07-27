@@ -84,6 +84,22 @@ public final class KnownPlayerService {
     }
 
     /**
+     * 彻底移除玩家的所有数据（已知名单、离线密码、封禁记录、免密登录记录）。
+     */
+    public static boolean removeAllPlayerData(UUID playerUuid) {
+        if (playerUuid == null) {
+            return false;
+        }
+
+        LOGIN_MODES.remove(playerUuid);
+        boolean removedFromKnown = AuthDatabase.removeKnownPlayer(playerUuid);
+        AuthDatabase.clearOfflineTrustedLogins(playerUuid);
+        AuthDatabase.clearOfflineLoginBlock(playerUuid);
+        AuthDatabase.deleteOfflineUser(playerUuid);
+        return removedFromKnown;
+    }
+
+    /**
      * 消费内存中的登录模式（用于 PlayerLoggedInEvent）。
      */
     public static OnlineAuthService.LoginMode consumeLoginMode(UUID playerUuid) {
