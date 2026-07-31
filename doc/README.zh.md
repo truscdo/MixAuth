@@ -134,16 +134,15 @@ flowchart TD
 
 ### 配置文件位置
 
-- 服务端配置文件名为 `auth-server.toml`。
+- 服务端配置文件名为 `mixauth-server.toml`。
 - NeoForge 会按 SERVER 配置规则加载该文件。
-- 如果需要世界级覆盖，可使用 `world/serverconfig/auth-server.toml`。
 - 修改配置后建议重启服务器，使新的认证参数在下一次启动时完整生效。
 
 ### 默认配置
 
 ```toml
 [database]
-path = "auth/auth"
+path = "mixauth/mixauth"
 
 [offline_login]
 max_login_attempts = 3
@@ -154,7 +153,7 @@ prompt_interval_seconds = 5
 bcrypt_cost = 12
 min_password_length = 1
 max_password_length = 72
-password_blacklist_path = "auth/password_blacklist.txt"
+password_blacklist_path = "mixauth/password_blacklist.txt"
 
 [online_validation]
 connect_timeout_seconds = 10
@@ -170,7 +169,7 @@ auto_detect_player_language = true
 
 | 配置项 | 说明 |
 | --- | --- |
-| `database.path` | H2 数据库基础路径。相对路径按服务器根目录解析，默认会生成 `auth/auth.mv.db`。 |
+| `database.path` | H2 数据库基础路径。相对路径按服务器根目录解析，默认会生成 `mixauth/mixauth.mv.db`。 |
 | `offline_login.max_login_attempts` | 单次待登录阶段允许输错密码的最大次数。 |
 | `offline_login.temporary_block_minutes` | 达到错误次数上限后的临时封禁时长。 |
 | `offline_login.trusted_login_window_hours` | 同 UUID、同 IP 可免密登录的时间窗口。 |
@@ -179,7 +178,7 @@ auto_detect_player_language = true
 | `offline_login.bcrypt_cost` | 离线密码哈希使用的 BCrypt 开销因子。 |
 | `offline_login.min_password_length` | 最小密码长度（默认 1，范围 1–72）。BCrypt 输入限制为 72 字节。 |
 | `offline_login.max_password_length` | 最大密码长度（默认 72，范围 1–72）。BCrypt 输入限制为 72 字节。 |
-| `offline_login.password_blacklist_path` | 外部密码黑名单文件路径。文件格式为每行一个密码，`#` 开头为注释行。文件不存在时首次启动会自动从内置资源创建。相对路径按服务器根目录解析。默认生成 `auth/password_blacklist.txt`。 |
+| `offline_login.password_blacklist_path` | 外部密码黑名单文件路径。文件格式为每行一个密码，`#` 开头为注释行。文件不存在时首次启动会自动从内置资源创建。相对路径按服务器根目录解析。默认生成 `mixauth/password_blacklist.txt`。 |
 | `online_validation.connect_timeout_seconds` | 连接 Mojang 服务时的超时时间。 |
 | `online_validation.request_timeout_seconds` | 请求 Mojang 服务时的超时时间。 |
 | `online_validation.pending_handshake_ttl_seconds` | 登录阶段待完成正版握手的保留时间。 |

@@ -134,16 +134,15 @@ flowchart TD
 
 ### Config File Location
 
-- The server config file is named `auth-server.toml`.
+- The server config file is named `mixauth-server.toml`.
 - NeoForge loads this file as a SERVER config.
-- For a world-specific override, use `world/serverconfig/auth-server.toml`.
 - After changing the config, restarting the server is recommended so that the new authentication parameters are fully applied on the next startup.
 
 ### Default Configuration
 
 ```toml
 [database]
-path = "auth/auth"
+path = "mixauth/mixauth"
 
 [offline_login]
 max_login_attempts = 3
@@ -154,7 +153,7 @@ prompt_interval_seconds = 5
 bcrypt_cost = 12
 min_password_length = 1
 max_password_length = 72
-password_blacklist_path = "auth/password_blacklist.txt"
+password_blacklist_path = "mixauth/password_blacklist.txt"
 
 [online_validation]
 connect_timeout_seconds = 10
@@ -170,7 +169,7 @@ auto_detect_player_language = true
 
 | Option | Description |
 | --- | --- |
-| `database.path` | Base path of the H2 database. Relative paths are resolved from the server root, and the default produces `auth/auth.mv.db`. |
+| `database.path` | Base path of the H2 database. Relative paths are resolved from the server root, and the default produces `mixauth/mixauth.mv.db`. |
 | `offline_login.max_login_attempts` | Maximum number of wrong password entries allowed during a pending-login phase. |
 | `offline_login.temporary_block_minutes` | Temporary block duration after the failed-attempt limit is reached. |
 | `offline_login.trusted_login_window_hours` | Passwordless login window for the same UUID and IP. |
@@ -179,7 +178,7 @@ auto_detect_player_language = true
 | `offline_login.bcrypt_cost` | BCrypt cost factor used for offline password hashes. |
 | `offline_login.min_password_length` | Minimum password length (default 1, range 1–72). BCrypt input is limited to 72 bytes. |
 | `offline_login.max_password_length` | Maximum password length (default 72, range 1–72). BCrypt input is limited to 72 bytes. |
-| `offline_login.password_blacklist_path` | Path to the external password blacklist file. File format is one password per line; lines starting with `#` are comments. When the file does not exist, it is automatically created from built-in resources on first startup. Relative paths are resolved from the server root. Default produces `auth/password_blacklist.txt`. |
+| `offline_login.password_blacklist_path` | Path to the external password blacklist file. File format is one password per line; lines starting with `#` are comments. When the file does not exist, it is automatically created from built-in resources on first startup. Relative paths are resolved from the server root. Default produces `mixauth/password_blacklist.txt`. |
 | `online_validation.connect_timeout_seconds` | Timeout for connecting to Mojang services. |
 | `online_validation.request_timeout_seconds` | Timeout for Mojang service requests. |
 | `online_validation.pending_handshake_ttl_seconds` | Retention time for a pending premium handshake during the login phase. |
