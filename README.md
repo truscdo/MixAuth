@@ -6,9 +6,8 @@ Provides authentication for NeoForge 1.21.1 offline-mode servers.
 
 This mod has a direct goal:
 
-- Offline players can register a password and log in.
 - Premium players can complete Mojang online validation on an offline-mode server.
-- Offline players cannot move, interact, chat, or view their real inventory until authentication is complete.
+- Offline players must register or login before they can move, interact, chat, or view their real inventory.
 
 ## Main Features
 
@@ -22,7 +21,7 @@ This mod has a direct goal:
 
 - When a player connects, the mod actively starts premium handshake and Mojang session validation during the login phase.
 - If validation succeeds, the player continues login as a premium account, with the experience consistent with a premium server.
-- After a successful premium login, the player uses the premium UUID instead of the offline-mode server-generated UUID, ensuring that mods depending on premium UUIDs (e.g., Figura) work correctly.
+- After a successful premium login, the player uses the premium UUID instead of the offline-mode server-generated UUID, so that both mods depending on premium UUIDs (e.g., Figura and FTB Chunks) and premium skins work correctly.
 
 ### 3. Known Player List Management
 
@@ -182,8 +181,8 @@ auto_detect_player_language = true
 | `online_validation.connect_timeout_seconds` | Timeout for connecting to Mojang services. |
 | `online_validation.request_timeout_seconds` | Timeout for Mojang service requests. |
 | `online_validation.pending_handshake_ttl_seconds` | Retention time for a pending premium handshake during the login phase. |
-| `localization.default_language` | Default prompt language. Currently supported values are `zh_cn` and `en_us`. |
-| `localization.auto_detect_player_language` | Whether prompts should switch between Chinese and English after login based on the client language. |
+| `localization.default_language` | Default prompt language. Supported values: `zh_cn`, `en_us`, `es_es`, `pt_br`, `ru_ru`. |
+| `localization.auto_detect_player_language` | Whether to use the player's reported client language after login when it matches a supported locale. |
 
 Additional notes:
 

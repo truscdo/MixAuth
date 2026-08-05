@@ -6,9 +6,8 @@ For the English documentation, see [README.md](README.md).
 
 这个 Mod 的目标很直接：
 
-- 离线玩家可以注册密码并完成登录。
 - 正版玩家可以在离线服中走 Mojang 正版校验。
-- 离线玩家在认证完成前无法移动、交互、聊天或查看真实背包。
+- 离线玩家需先注册或登录，之后才能移动、交互、聊天和查看真实背包。
 
 ## 主要功能
 
@@ -22,7 +21,7 @@ For the English documentation, see [README.md](README.md).
 
 - 玩家连接服务器时，Mod 会在登录阶段主动发起正版握手与 Mojang 会话校验。
 - 如果校验成功，玩家按正版身份进入游戏，体验与正版服务器一致。
-- 登录成功的玩家将会使用正版模式的 UUID 而不是离线服务器自己生成的 UUID，这样依赖正版 UUID 的 mod 都可以正常工作（例如Figura）。
+- 登录成功的玩家将会使用正版模式的 UUID 而不是离线服务器自己生成的 UUID，这样依赖正版 UUID 的 mod（例如Figura、FTB Chunks）和正版皮肤都能正常工作。
 
 ### 3. 已知玩家名单管理
 
@@ -182,8 +181,8 @@ auto_detect_player_language = true
 | `online_validation.connect_timeout_seconds` | 连接 Mojang 服务时的超时时间。 |
 | `online_validation.request_timeout_seconds` | 请求 Mojang 服务时的超时时间。 |
 | `online_validation.pending_handshake_ttl_seconds` | 登录阶段待完成正版握手的保留时间。 |
-| `localization.default_language` | 默认提示语言，当前支持 `zh_cn` 和 `en_us`。 |
-| `localization.auto_detect_player_language` | 登录后是否根据客户端语言在中文和英文之间自动切换提示。 |
+| `localization.default_language` | 默认提示语言，支持 `zh_cn`、`en_us`、`es_es`、`pt_br`、`ru_ru`。 |
+| `localization.auto_detect_player_language` | 登录后是否在客户端语言匹配受支持语言时使用对应语言显示提示。 |
 
 补充说明：
 
