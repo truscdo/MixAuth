@@ -7,9 +7,10 @@ import io.github.truscdo.mixauth.OnlineAuthService;
 import io.github.truscdo.mixauth.PlayerIdentityService;
 import io.github.truscdo.mixauth.AuthServerConfig;
 import io.github.truscdo.mixauth.AuthTranslations;
+import io.github.truscdo.mixauth.validation.MojangClient;
+import io.github.truscdo.mixauth.validation.MojangClient.HasJoinedResult;
+import io.github.truscdo.mixauth.validation.MojangClient.PreLoginCheckResult;
 import io.github.truscdo.mixauth.validation.OnlineHandshakeValidationService;
-import io.github.truscdo.mixauth.validation.OnlineHandshakeValidationService.HasJoinedResult;
-import io.github.truscdo.mixauth.validation.OnlineHandshakeValidationService.PreLoginCheckResult;
 import io.github.truscdo.mixauth.validation.OnlineHandshakeValidationService.ValidationResult;
 import io.github.truscdo.mixauth.validation.OfflineModeDetector;
 import com.mojang.authlib.GameProfile;
@@ -120,7 +121,7 @@ abstract class ServerLoginPacketListenerImplMixin {
 
         // 3. 未知玩家，执行预检查
         CompletableFuture.runAsync(() -> {
-            var result = OnlineHandshakeValidationService.syncPreLoginCheck(
+            var result = MojangClient.syncPreLoginCheck(
                     packet.name(), packet.profileId());
 
             this.server.execute(() -> {

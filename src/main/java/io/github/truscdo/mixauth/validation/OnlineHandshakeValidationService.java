@@ -1,13 +1,7 @@
 package io.github.truscdo.mixauth.validation;
 
-import io.github.truscdo.mixauth.AuthServerConfig;
-import io.github.truscdo.mixauth.AuthLocalizedText;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import com.mojang.authlib.GameProfile;
-import com.mojang.authlib.properties.Property;
+import io.github.truscdo.mixauth.AuthLocalizedText;
 import io.github.truscdo.mixauth.LogUtil;
 import net.minecraft.core.UUIDUtil;
 import net.minecraft.network.Connection;
@@ -21,37 +15,20 @@ import org.slf4j.Logger;
 
 import javax.crypto.Cipher;
 import javax.crypto.SecretKey;
-import java.io.IOException;
 import java.math.BigInteger;
-import java.net.InetAddress;
-import java.net.InetSocketAddress;
-import java.net.SocketAddress;
-import java.net.URI;
-import java.net.URLEncoder;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
 import java.security.SecureRandom;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Function;
 import java.util.function.Supplier;
 
 public final class OnlineHandshakeValidationService {
     private static final Logger LOGGER = LogUtil.getLogger();
-    private static final String PROFILE_LOOKUP_BY_NAME_URL = "https://api.minecraftservices.com/minecraft/profile/lookup/name/";
-    private static final Map<String, PendingHandshake> PENDING = new ConcurrentHashMap<>();
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     /**
@@ -129,20 +106,18 @@ public final class OnlineHandshakeValidationService {
             ServerboundHelloPacket packet,
             String serverId,
             KeyPair keyPair) {
-        cleanupExpiredEntries();
+        PendingHandshakeRegistry.cleanupExpiredEntries();
 
-        String key = connectionKey(connection);
         byte[] challenge = new byte[4];
         SECURE_RANDOM.nextBytes(challenge);
 
-        PendingHandshake pendingHandshake = new PendingHandshake(
+        PendingHandshakeRegistry.put(
+                connection,
                 packet.name(),
                 packet.profileId(),
                 keyPair,
                 challenge,
-                serverId,
-                System.currentTimeMillis());
-        PENDING.put(key, pendingHandshake);
+                serverId);
 
         return new ClientboundHelloPacket(serverId, keyPair.getPublic().getEncoded(), challenge, true);
     }
@@ -157,34 +132,32 @@ public final class OnlineHandshakeValidationService {
     }
 
     public static PendingKeyState pendingKeyState(Connection connection) {
-        String key = connectionKey(connection);
-        PendingHandshake pendingHandshake = PENDING.get(key);
+        PendingHandshakeRegistry.PendingHandshake pendingHandshake = PendingHandshakeRegistry.get(connection);
         if (pendingHandshake == null) {
-            cleanupExpiredEntries();
+            PendingHandshakeRegistry.cleanupExpiredEntries();
             return PendingKeyState.NONE;
         }
 
-        if (isExpired(pendingHandshake, System.currentTimeMillis())) {
+        if (PendingHandshakeRegistry.isExpired(pendingHandshake, System.currentTimeMillis())) {
             return PendingKeyState.EXPIRED;
         }
 
-        cleanupExpiredEntries();
+        PendingHandshakeRegistry.cleanupExpiredEntries();
         return PendingKeyState.PRESENT;
     }
 
     public static ValidationResult handleKey(
             Connection connection,
             ServerboundKeyPacket packet) throws CryptException {
-        String key = connectionKey(connection);
-        PendingHandshake pendingHandshake = PENDING.get(key);
+        PendingHandshakeRegistry.PendingHandshake pendingHandshake = PendingHandshakeRegistry.get(connection);
         if (pendingHandshake == null) {
-            cleanupExpiredEntries();
+            PendingHandshakeRegistry.cleanupExpiredEntries();
             return ValidationResult.missingPending();
         }
 
-        if (isExpired(pendingHandshake, System.currentTimeMillis())) {
-            PENDING.remove(key);
-            cleanupExpiredEntries();
+        if (PendingHandshakeRegistry.isExpired(pendingHandshake, System.currentTimeMillis())) {
+            PendingHandshakeRegistry.remove(connection);
+            PendingHandshakeRegistry.cleanupExpiredEntries();
             return ValidationResult.handshakeTimedOut(pendingHandshake.username());
         }
 
@@ -193,7 +166,7 @@ public final class OnlineHandshakeValidationService {
                 pendingHandshake.challenge(),
                 pendingHandshake.keyPair().getPrivate());
         if (!challengeValid) {
-            PENDING.remove(connectionKey(connection));
+            PendingHandshakeRegistry.remove(connection);
             return ValidationResult.invalidChallenge(pendingHandshake.username());
         }
 
@@ -215,8 +188,9 @@ public final class OnlineHandshakeValidationService {
                 pendingHandshake.createdAt());
     }
 
-    public static CompletableFuture<HasJoinedResult> requestHasJoined(ValidationResult result) {
-        return CompletableFuture.supplyAsync(() -> doRequestHasJoined(result));
+    /** 委托网络层发起 hasJoined 会话校验。 */
+    public static CompletableFuture<MojangClient.HasJoinedResult> requestHasJoined(ValidationResult result) {
+        return MojangClient.requestHasJoined(result.username(), result.serverHash());
     }
 
     public static GameProfile createOfflineProfile(String username) {
@@ -224,246 +198,19 @@ public final class OnlineHandshakeValidationService {
     }
 
     public static void clear(Connection connection) {
-        PENDING.remove(connectionKey(connection));
-    }
-
-    private static HttpClient createHttpClient() {
-        return HttpClient.newBuilder()
-                .connectTimeout(AuthServerConfig.mojangConnectTimeout())
-                .build();
-    }
-
-    /** httpGet 传输层错误类型 */
-    enum HttpErrorType {
-        INTERRUPTED, IO_FAILURE
-    }
-
-    @FunctionalInterface
-    private interface HttpErrorHandler<T> {
-        T apply(HttpErrorType type);
-    }
-
-    private static <T> T httpGet(String url, Function<HttpResponse<String>, T> successHandler,
-            String errorContext,
-            HttpErrorHandler<T> errorHandler) {
-        try {
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(url))
-                    .GET()
-                    .timeout(AuthServerConfig.mojangRequestTimeout())
-                    .build();
-            HttpResponse<String> response = createHttpClient().send(request,
-                    HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-            return successHandler.apply(response);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            LOGGER.error("Interrupted while {}", errorContext, e);
-            return errorHandler.apply(HttpErrorType.INTERRUPTED);
-        } catch (IOException e) {
-            LOGGER.error("I/O failure while {}", errorContext, e);
-            return errorHandler.apply(HttpErrorType.IO_FAILURE);
-        }
-    }
-
-    public static PreLoginCheckResult syncPreLoginCheck(String username, UUID requestedProfileId) {
-        if (username == null || username.isBlank()) {
-            LOGGER.warn("syncPreLoginCheck called with empty username, disconnecting");
-            return new PreLoginCheckResult.Disconnect(
-                    username,
-                    requestedProfileId,
-                    AuthLocalizedText.of("auth.validation.reason.missing_username"));
-        }
-
-        try {
-            String url = PROFILE_LOOKUP_BY_NAME_URL + encode(username);
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(url))
-                    .GET()
-                    .timeout(AuthServerConfig.mojangRequestTimeout())
-                    .build();
-            HttpResponse<String> response = createHttpClient().send(request,
-                    HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-
-            int statusCode = response.statusCode();
-            String body = response.body();
-
-            if (statusCode == 404 || statusCode == 204) {
-                return new PreLoginCheckResult.Offline(username);
-            }
-            if (statusCode == 429) {
-                LOGGER.warn("Mojang profile lookup rate limited for {} (HTTP 429)", username);
-                return new PreLoginCheckResult.Disconnect(
-                        username, requestedProfileId,
-                        AuthLocalizedText.of("auth.validation.reason.mojang_api_unavailable"));
-            }
-            if (statusCode >= 500) {
-                LOGGER.warn("Mojang profile lookup returned server error {} for {}", statusCode, username);
-                return new PreLoginCheckResult.Disconnect(
-                        username, requestedProfileId,
-                        AuthLocalizedText.of("auth.validation.reason.mojang_api_unavailable"));
-            }
-            if (statusCode != 200) {
-                LOGGER.warn("Mojang profile lookup returned unexpected status {} for {}", statusCode, username);
-                return new PreLoginCheckResult.Disconnect(
-                        username, requestedProfileId,
-                        AuthLocalizedText.of("auth.validation.reason.mojang_api_unavailable"));
-            }
-
-            GameProfile profile = parseGameProfile(body, username);
-            if (profile == null || profile.getId() == null) {
-                LOGGER.warn("Mojang profile lookup returned malformed profile data for {} (HTTP 200, parse failed)",
-                        username);
-                return new PreLoginCheckResult.Disconnect(
-                        username, requestedProfileId,
-                        AuthLocalizedText.of("auth.validation.reason.mojang_data_error"));
-            }
-            if (!requestedProfileId.equals(profile.getId())) {
-                return new PreLoginCheckResult.Offline(username);
-            }
-            String resolvedName = profile.getName();
-            if (resolvedName == null || !resolvedName.equalsIgnoreCase(username)) {
-                return new PreLoginCheckResult.Offline(username);
-            }
-            return new PreLoginCheckResult.Online();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            LOGGER.error("Interrupted while looking up Mojang profile for {}", username, e);
-            return new PreLoginCheckResult.Disconnect(username, requestedProfileId,
-                    AuthLocalizedText.of("auth.validation.reason.mojang_api_unavailable"));
-        } catch (IOException e) {
-            LOGGER.error("I/O failure while looking up Mojang profile for {}", username, e);
-            return new PreLoginCheckResult.Disconnect(username, requestedProfileId,
-                    AuthLocalizedText.of("auth.validation.reason.mojang_api_unavailable"));
-        } catch (RuntimeException e) {
-            LOGGER.error("Unexpected error while looking up Mojang profile for {}", username, e);
-            return new PreLoginCheckResult.Disconnect(username, requestedProfileId,
-                    AuthLocalizedText.of("auth.validation.reason.mojang_api_unavailable"));
-        }
-    }
-
-    private static HasJoinedResult doRequestHasJoined(ValidationResult result) {
-        String username = result.username();
-        String url = "https://sessionserver.mojang.com/session/minecraft/hasJoined?username="
-                + encode(username) + "&serverId=" + encode(result.serverHash());
-
-        return httpGet(url, response -> {
-            int statusCode = response.statusCode();
-            String body = response.body();
-            boolean success = statusCode == 200;
-            GameProfile profile = success ? parseGameProfile(body, username) : null;
-
-            if (!success) {
-                LOGGER.warn("Session server returned HTTP {} for {} (expected 200)", statusCode, username);
-            }
-
-            if (success && profile == null) {
-                LOGGER.error("Session server returned malformed profile data for {}", username);
-                return new HasJoinedResult(username, statusCode, body, false,
-                        AuthLocalizedText.of("auth.validation.reason.mojang_data_error"), null);
-            }
-
-            return new HasJoinedResult(username, statusCode, body, success, null, profile);
-        }, "requesting session validation for " + username,
-                type -> switch (type) {
-                    case INTERRUPTED -> new HasJoinedResult(username, 0, "", false,
-                            AuthLocalizedText.of("auth.validation.reason.mojang_api_unavailable"), null);
-                    case IO_FAILURE -> new HasJoinedResult(username, 0, "", false,
-                            AuthLocalizedText.of("auth.validation.reason.mojang_api_unavailable"), null);
-                });
-    }
-
-    private static GameProfile parseGameProfile(String body, String fallbackUsername) {
-        try {
-            JsonObject root = JsonParser.parseString(body).getAsJsonObject();
-            JsonElement idElement = root.get("id");
-            if (idElement == null) {
-                return null;
-            }
-
-            UUID uuid = parseUndashedUuid(idElement.getAsString());
-            String profileName = Optional.ofNullable(root.get("name"))
-                    .map(JsonElement::getAsString)
-                    .filter(name -> !name.isBlank())
-                    .orElse(fallbackUsername);
-
-            GameProfile profile = new GameProfile(uuid, profileName);
-            JsonArray properties = root.getAsJsonArray("properties");
-            if (properties != null) {
-                for (JsonElement propertyElement : properties) {
-                    JsonObject propertyObject = propertyElement.getAsJsonObject();
-                    String name = propertyObject.get("name").getAsString();
-                    String value = propertyObject.get("value").getAsString();
-                    JsonElement signatureElement = propertyObject.get("signature");
-                    Property property = signatureElement == null || signatureElement.isJsonNull()
-                            ? new Property(name, value)
-                            : new Property(name, value, signatureElement.getAsString());
-                    profile.getProperties().put(name, property);
-                }
-            }
-
-            return profile;
-        } catch (RuntimeException runtimeException) {
-            LOGGER.error("Failed to parse authenticated profile for {}", fallbackUsername, runtimeException);
-            return null;
-        }
-    }
-
-    private static UUID parseUndashedUuid(String value) {
-        String normalized = value.toLowerCase(Locale.ROOT).replace("-", "");
-        if (normalized.length() != 32) {
-            throw new IllegalArgumentException("Unexpected UUID length: " + value);
-        }
-
-        String dashed = normalized.substring(0, 8)
-                + "-" + normalized.substring(8, 12)
-                + "-" + normalized.substring(12, 16)
-                + "-" + normalized.substring(16, 20)
-                + "-" + normalized.substring(20);
-        return UUID.fromString(dashed);
-    }
-
-    private static void cleanupExpiredEntries() {
-        long now = System.currentTimeMillis();
-        PENDING.entrySet().removeIf(entry -> isExpired(entry.getValue(), now));
-    }
-
-    private static boolean isExpired(PendingHandshake pendingHandshake, long now) {
-        return now - pendingHandshake.createdAt() > AuthServerConfig.pendingHandshakeTtl().toMillis();
-    }
-
-    private static String connectionKey(Connection connection) {
-        SocketAddress remoteAddress = connection.getRemoteAddress();
-        if (remoteAddress instanceof InetSocketAddress inetSocketAddress) {
-            InetAddress address = inetSocketAddress.getAddress();
-            String hostAddress = address == null ? inetSocketAddress.getHostString() : address.getHostAddress();
-            return hostAddress + ":" + inetSocketAddress.getPort();
-        }
-        return String.valueOf(remoteAddress);
-    }
-
-    private static String encode(String value) {
-        return URLEncoder.encode(value, StandardCharsets.UTF_8);
-    }
-
-    private record PendingHandshake(
-            String username,
-            java.util.UUID profileId,
-            KeyPair keyPair,
-            byte[] challenge,
-            String serverId,
-            long createdAt) {
+        PendingHandshakeRegistry.clear(connection);
     }
 
     public record ValidationResult(
             String username,
-            java.util.UUID profileId,
+            UUID profileId,
             String serverHash,
             boolean ready,
             AuthLocalizedText failureReason,
             long createdAt) {
         public static ValidationResult readyForHasJoined(
                 String username,
-                java.util.UUID profileId,
+                UUID profileId,
                 String serverHash,
                 long createdAt) {
             return new ValidationResult(username, profileId, serverHash, true, null, createdAt);
@@ -500,30 +247,9 @@ public final class OnlineHandshakeValidationService {
         }
     }
 
-    public record HasJoinedResult(
-            String username,
-            int statusCode,
-            String body,
-            boolean success,
-            AuthLocalizedText failureReason,
-            GameProfile profile) {
-    }
-
     public enum PendingKeyState {
         NONE,
         PRESENT,
         EXPIRED
-    }
-
-    public sealed interface PreLoginCheckResult {
-        record Online() implements PreLoginCheckResult {
-        }
-
-        record Offline(String username) implements PreLoginCheckResult {
-        }
-
-        record Disconnect(String username, java.util.UUID requestedProfileId, AuthLocalizedText reason)
-                implements PreLoginCheckResult {
-        }
     }
 }
