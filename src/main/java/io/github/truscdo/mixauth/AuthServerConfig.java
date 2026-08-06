@@ -63,7 +63,7 @@ public final class AuthServerConfig {
     }
 
     public static String defaultLanguage() {
-        return AuthTranslations.normalizeSupportedLanguage(VALUES.defaultLanguage.get());
+        return AuthLanguages.normalizeSupportedLanguage(VALUES.defaultLanguage.get());
     }
 
     public static boolean autoDetectPlayerLanguage() {
@@ -87,7 +87,7 @@ public final class AuthServerConfig {
     }
 
     private static boolean isSupportedLanguage(Object value) {
-        return value instanceof String stringValue && AuthTranslations.isSupportedLanguage(stringValue);
+        return value instanceof String stringValue && AuthLanguages.isSupportedLanguage(stringValue);
     }
 
     static final class ServerValues {

@@ -1,12 +1,12 @@
 package io.github.truscdo.mixauth.mixin;
 
-import io.github.truscdo.mixauth.AuthLocalizedText;
+import io.github.truscdo.mixauth.AuthServerConfig;
 import io.github.truscdo.mixauth.KnownPlayerService;
 import io.github.truscdo.mixauth.OfflineAuthService;
 import io.github.truscdo.mixauth.OnlineAuthService;
 import io.github.truscdo.mixauth.PlayerIdentityService;
-import io.github.truscdo.mixauth.AuthServerConfig;
-import io.github.truscdo.mixauth.AuthTranslations;
+import io.github.truscdo.mixauth.localization.AuthLocalizedText;
+import io.github.truscdo.mixauth.localization.AuthTranslations;
 import io.github.truscdo.mixauth.validation.MojangClient;
 import io.github.truscdo.mixauth.validation.MojangClient.HasJoinedResult;
 import io.github.truscdo.mixauth.validation.MojangClient.PreLoginCheckResult;

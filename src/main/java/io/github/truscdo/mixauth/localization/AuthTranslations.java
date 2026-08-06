@@ -1,5 +1,9 @@
-package io.github.truscdo.mixauth;
+package io.github.truscdo.mixauth.localization;
 
+import io.github.truscdo.mixauth.AuthLanguages;
+import io.github.truscdo.mixauth.AuthMod;
+import io.github.truscdo.mixauth.AuthServerConfig;
+import io.github.truscdo.mixauth.LogUtil;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -14,42 +18,13 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.IllegalFormatException;
-import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 
 public final class AuthTranslations {
-    // Language code → locale prefix for auto-detection fallback.
-    // To add a language: create <code>.json in assets/auth/lang/, then add an entry
-    // here.
-    private static final Map<String, String> LANGUAGES = new LinkedHashMap<>();
-
-    static {
-        LANGUAGES.put("zh_cn", "zh");
-        LANGUAGES.put("en_us", "en");
-        LANGUAGES.put("es_es", "es");
-        LANGUAGES.put("pt_br", "pt");
-        LANGUAGES.put("ru_ru", "ru");
-    }
-
     private static final Logger LOGGER = LogUtil.getLogger();
-    private static final Set<String> SUPPORTED_LANGUAGES = LANGUAGES.keySet();
 
     private AuthTranslations() {
-    }
-
-    public static boolean isSupportedLanguage(String value) {
-        return normalizeSupportedLanguage(value) != null;
-    }
-
-    public static String normalizeSupportedLanguage(String value) {
-        if (value == null) {
-            return null;
-        }
-
-        String normalized = value.strip().toLowerCase(Locale.ROOT).replace('-', '_');
-        return SUPPORTED_LANGUAGES.contains(normalized) ? normalized : null;
     }
 
     public static String resolveLanguage(ServerPlayer player) {
@@ -134,14 +109,14 @@ public final class AuthTranslations {
     }
 
     private static String resolveReportedLanguage(String reportedLanguage) {
-        String normalized = normalizeSupportedLanguage(reportedLanguage);
+        String normalized = AuthLanguages.normalizeSupportedLanguage(reportedLanguage);
         if (normalized != null) {
             return normalized;
         }
 
         if (reportedLanguage != null) {
             String normalizedReportedLanguage = reportedLanguage.strip().toLowerCase(Locale.ROOT).replace('-', '_');
-            for (var entry : LANGUAGES.entrySet()) {
+            for (var entry : AuthLanguages.languagePrefixes().entrySet()) {
                 if (normalizedReportedLanguage.startsWith(entry.getValue())) {
                     return entry.getKey();
                 }
@@ -152,7 +127,7 @@ public final class AuthTranslations {
     }
 
     private static String resolveTemplate(String language, String key) {
-        String normalizedLanguage = normalizeSupportedLanguage(language);
+        String normalizedLanguage = AuthLanguages.normalizeSupportedLanguage(language);
         Map<String, String> languageMap = normalizedLanguage == null
                 ? TranslationHolder.TRANSLATIONS.get(configuredLanguage())
                 : TranslationHolder.TRANSLATIONS.get(normalizedLanguage);
@@ -167,7 +142,7 @@ public final class AuthTranslations {
 
     private static Map<String, Map<String, String>> loadTranslations() {
         Map<String, Map<String, String>> translations = new HashMap<>();
-        for (String langCode : SUPPORTED_LANGUAGES) {
+        for (String langCode : AuthLanguages.SUPPORTED_LANGUAGES) {
             translations.put(langCode, loadLanguageFile(langCode));
         }
         return Map.copyOf(translations);

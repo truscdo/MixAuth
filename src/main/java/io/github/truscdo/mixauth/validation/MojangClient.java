@@ -1,9 +1,9 @@
 package io.github.truscdo.mixauth.validation;
 
 import com.mojang.authlib.GameProfile;
-import io.github.truscdo.mixauth.AuthLocalizedText;
 import io.github.truscdo.mixauth.AuthServerConfig;
 import io.github.truscdo.mixauth.LogUtil;
+import io.github.truscdo.mixauth.localization.AuthLocalizedText;
 import org.slf4j.Logger;
 
 import java.io.IOException;

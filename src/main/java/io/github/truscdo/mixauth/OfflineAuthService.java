@@ -4,6 +4,7 @@ import at.favre.lib.crypto.bcrypt.BCrypt;
 import io.github.truscdo.mixauth.db.OfflineLoginBlockDao;
 import io.github.truscdo.mixauth.db.OfflineTrustedLoginDao;
 import io.github.truscdo.mixauth.db.OfflineUserDao;
+import io.github.truscdo.mixauth.localization.AuthTranslations;
 import org.slf4j.Logger;
 
 import java.time.Instant;

@@ -1,5 +1,6 @@
 package io.github.truscdo.mixauth;
 
+import io.github.truscdo.mixauth.localization.AuthTranslations;
 import net.minecraft.core.NonNullList;
 import net.minecraft.network.protocol.game.ClientboundContainerSetContentPacket;
 import net.minecraft.server.level.ServerPlayer;

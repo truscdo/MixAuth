@@ -1,9 +1,8 @@
-package io.github.truscdo.mixauth;
+package io.github.truscdo.mixauth.localization;
 
 public record AuthLocalizedText(
         String translationKey,
-        Object[] args
-) {
+        Object[] args) {
     public AuthLocalizedText {
         args = args == null ? new Object[0] : args.clone();
     }

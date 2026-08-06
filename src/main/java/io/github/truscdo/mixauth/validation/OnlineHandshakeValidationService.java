@@ -1,8 +1,8 @@
 package io.github.truscdo.mixauth.validation;
 
 import com.mojang.authlib.GameProfile;
-import io.github.truscdo.mixauth.AuthLocalizedText;
 import io.github.truscdo.mixauth.LogUtil;
+import io.github.truscdo.mixauth.localization.AuthLocalizedText;
 import net.minecraft.core.UUIDUtil;
 import net.minecraft.network.Connection;
 import net.minecraft.network.protocol.login.ClientboundHelloPacket;

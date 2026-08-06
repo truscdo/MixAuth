@@ -1,6 +1,7 @@
 package io.github.truscdo.mixauth;
 
 import io.github.truscdo.mixauth.db.KnownPlayerDao;
+import io.github.truscdo.mixauth.localization.AuthTranslations;
 import com.mojang.brigadier.Command;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
