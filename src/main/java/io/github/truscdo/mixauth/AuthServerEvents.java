@@ -1,5 +1,6 @@
 package io.github.truscdo.mixauth;
 
+import io.github.truscdo.mixauth.db.KnownPlayerDao;
 import com.mojang.brigadier.Command;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
@@ -27,7 +28,7 @@ public final class AuthServerEvents {
         if (remaining.isEmpty()) {
             return Suggestions.empty();
         }
-        List<AuthDatabase.KnownPlayerEntry> entries = AuthDatabase.findKnownPlayersByPrefix(remaining, 20);
+        List<KnownPlayerDao.KnownPlayerEntry> entries = KnownPlayerDao.findKnownPlayersByPrefix(remaining, 20);
         if (entries == null || entries.isEmpty()) {
             return Suggestions.empty();
         }
@@ -249,7 +250,7 @@ public final class AuthServerEvents {
             return null;
         }
 
-        List<AuthDatabase.KnownPlayerEntry> entries = AuthDatabase.findKnownPlayersByUsername(username);
+        List<KnownPlayerDao.KnownPlayerEntry> entries = KnownPlayerDao.findKnownPlayersByUsername(username);
         if (entries.isEmpty()) {
             source.sendFailure(
                     AuthTranslations.componentForSource(source, "auth.command.mode.player_not_found", username));

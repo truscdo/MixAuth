@@ -1,6 +1,9 @@
 package io.github.truscdo.mixauth;
 
 import at.favre.lib.crypto.bcrypt.BCrypt;
+import io.github.truscdo.mixauth.db.OfflineLoginBlockDao;
+import io.github.truscdo.mixauth.db.OfflineTrustedLoginDao;
+import io.github.truscdo.mixauth.db.OfflineUserDao;
 import org.slf4j.Logger;
 
 import java.time.Instant;
@@ -17,20 +20,20 @@ public final class OfflineAuthService {
     }
 
     public static boolean isOfflineRegistered(UUID playerUuid) {
-        return AuthDatabase.isOfflineRegistered(playerUuid);
+        return OfflineUserDao.isOfflineRegistered(playerUuid);
     }
 
     public static boolean registerOfflineUser(UUID playerUuid, String password) {
         String passwordHash = hashPassword(password);
-        return AuthDatabase.insertOfflineUser(playerUuid, passwordHash);
+        return OfflineUserDao.insertOfflineUser(playerUuid, passwordHash);
     }
 
     public static void saveOfflinePassword(UUID playerUuid, String password) {
-        AuthDatabase.saveOfflinePassword(playerUuid, hashPassword(password));
+        OfflineUserDao.saveOfflinePassword(playerUuid, hashPassword(password));
     }
 
     public static boolean verifyOfflinePassword(UUID playerUuid, String password) {
-        String passwordHash = AuthDatabase.findOfflinePasswordHash(playerUuid);
+        String passwordHash = OfflineUserDao.findOfflinePasswordHash(playerUuid);
         if (passwordHash == null) {
             return false;
         }
@@ -40,11 +43,11 @@ public final class OfflineAuthService {
 
     public static void blockOfflineLogin(UUID playerUuid, long durationMillis) {
         long blockedUntil = Instant.now().toEpochMilli() + durationMillis;
-        AuthDatabase.saveOfflineLoginBlock(playerUuid, blockedUntil);
+        OfflineLoginBlockDao.saveOfflineLoginBlock(playerUuid, blockedUntil);
     }
 
     public static long getOfflineLoginBlockRemainingMillis(UUID playerUuid) {
-        long blockedUntil = AuthDatabase.findOfflineLoginBlockedUntil(playerUuid);
+        long blockedUntil = OfflineLoginBlockDao.findOfflineLoginBlockedUntil(playerUuid);
         if (blockedUntil <= 0L) {
             return 0L;
         }
@@ -59,7 +62,7 @@ public final class OfflineAuthService {
     }
 
     public static void clearOfflineLoginBlock(UUID playerUuid) {
-        AuthDatabase.clearOfflineLoginBlock(playerUuid);
+        OfflineLoginBlockDao.clearOfflineLoginBlock(playerUuid);
     }
 
     public static void recordTrustedOfflineLogin(UUID playerUuid, String ipAddress) {
@@ -67,7 +70,7 @@ public final class OfflineAuthService {
             return;
         }
 
-        AuthDatabase.saveOfflineTrustedLogin(playerUuid, ipAddress, Instant.now().toEpochMilli());
+        OfflineTrustedLoginDao.saveOfflineTrustedLogin(playerUuid, ipAddress, Instant.now().toEpochMilli());
     }
 
     public static boolean canBypassOfflineLogin(UUID playerUuid, String ipAddress) {
@@ -76,17 +79,16 @@ public final class OfflineAuthService {
         }
 
         long validAfter = Instant.now().toEpochMilli() - AuthServerConfig.trustedLoginWindowMillis();
-        if (!AuthDatabase.hasRecentOfflineTrustedLogin(playerUuid, ipAddress, validAfter)) {
+        if (!OfflineTrustedLoginDao.hasRecentOfflineTrustedLogin(playerUuid, ipAddress, validAfter)) {
             return false;
         }
 
-        if (AuthDatabase.hasSharedRecentOfflineTrustedIp(ipAddress, validAfter)) {
+        if (OfflineTrustedLoginDao.hasSharedRecentOfflineTrustedIp(ipAddress, validAfter)) {
             LOGGER.info(
                     "Skipped offline passwordless login for {} because IP {} matched multiple UUIDs within {}",
                     playerUuid,
                     ipAddress,
-                    describeTrustedLoginWindow()
-            );
+                    describeTrustedLoginWindow());
             return false;
         }
 
@@ -94,7 +96,7 @@ public final class OfflineAuthService {
     }
 
     public static void clearTrustedOfflineLogins(UUID playerUuid) {
-        AuthDatabase.clearOfflineTrustedLogins(playerUuid);
+        OfflineTrustedLoginDao.clearOfflineTrustedLogins(playerUuid);
     }
 
     public static String describeTrustedLoginWindow(String language) {

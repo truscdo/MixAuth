@@ -1,5 +1,9 @@
 package io.github.truscdo.mixauth;
 
+import io.github.truscdo.mixauth.db.KnownPlayerDao;
+import io.github.truscdo.mixauth.db.OfflineLoginBlockDao;
+import io.github.truscdo.mixauth.db.OfflineTrustedLoginDao;
+import io.github.truscdo.mixauth.db.OfflineUserDao;
 import net.minecraft.core.UUIDUtil;
 import org.slf4j.Logger;
 
@@ -29,7 +33,7 @@ public final class KnownPlayerService {
 
         // 先尝试 clientUuid
         if (clientUuid != null) {
-            String mode = AuthDatabase.findLoginMode(clientUuid);
+            String mode = KnownPlayerDao.findLoginMode(clientUuid);
             if (mode != null) {
                 return parseLoginMode(mode);
             }
@@ -38,7 +42,7 @@ public final class KnownPlayerService {
         // 再尝试 server-generated UUID
         UUID serverUuid = UUIDUtil.createOfflineProfile(username).getId();
         if (!serverUuid.equals(clientUuid)) {
-            String mode = AuthDatabase.findLoginMode(serverUuid);
+            String mode = KnownPlayerDao.findLoginMode(serverUuid);
             if (mode != null) {
                 return parseLoginMode(mode);
             }
@@ -55,7 +59,7 @@ public final class KnownPlayerService {
             return;
         }
 
-        AuthDatabase.saveKnownPlayer(playerUuid, username, mode.name());
+        KnownPlayerDao.saveKnownPlayer(playerUuid, username, mode.name());
         markLoginMode(playerUuid, mode);
     }
 
@@ -67,7 +71,7 @@ public final class KnownPlayerService {
             return;
         }
 
-        AuthDatabase.saveKnownPlayer(playerUuid, username, mode.name());
+        KnownPlayerDao.saveKnownPlayer(playerUuid, username, mode.name());
         LOGGER.info("Admin set login mode for {} ({}) to {}", username, playerUuid, mode);
     }
 
@@ -80,7 +84,7 @@ public final class KnownPlayerService {
         }
 
         LOGIN_MODES.remove(playerUuid);
-        return AuthDatabase.removeKnownPlayer(playerUuid);
+        return KnownPlayerDao.removeKnownPlayer(playerUuid);
     }
 
     /**
@@ -92,10 +96,10 @@ public final class KnownPlayerService {
         }
 
         LOGIN_MODES.remove(playerUuid);
-        boolean removedFromKnown = AuthDatabase.removeKnownPlayer(playerUuid);
-        AuthDatabase.clearOfflineTrustedLogins(playerUuid);
-        AuthDatabase.clearOfflineLoginBlock(playerUuid);
-        AuthDatabase.deleteOfflineUser(playerUuid);
+        boolean removedFromKnown = KnownPlayerDao.removeKnownPlayer(playerUuid);
+        OfflineTrustedLoginDao.clearOfflineTrustedLogins(playerUuid);
+        OfflineLoginBlockDao.clearOfflineLoginBlock(playerUuid);
+        OfflineUserDao.deleteOfflineUser(playerUuid);
         return removedFromKnown;
     }
 

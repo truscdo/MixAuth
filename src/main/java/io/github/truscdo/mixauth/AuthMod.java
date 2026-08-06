@@ -1,10 +1,12 @@
 package io.github.truscdo.mixauth;
 
+import io.github.truscdo.mixauth.db.DatabaseSupport;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.config.ModConfig;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.server.ServerAboutToStartEvent;
+import net.neoforged.neoforge.event.server.ServerStoppingEvent;
 import org.slf4j.Logger;
 
 @Mod(AuthMod.MODID)
@@ -24,5 +26,6 @@ public final class AuthMod {
         bus.addListener(AuthServerEvents::onPlayerLoggedIn);
         OfflineAuthSessionService.registerEventHandlers(bus);
         bus.addListener((ServerAboutToStartEvent event) -> PasswordBlacklistLoader.init());
+        bus.addListener((ServerStoppingEvent event) -> DatabaseSupport.dispose());
     }
 }
