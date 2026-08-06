@@ -111,7 +111,6 @@ public final class OfflineAuthSessionService {
         player.sendSystemMessage(AuthTranslations.componentForPlayer(player, switch (stage) {
             case REGISTER -> "auth.prompt.register";
             case LOGIN -> "auth.prompt.login";
-            case RECONNECT_LOGIN -> "auth.prompt.reconnect_login";
         }));
     }
 
@@ -373,8 +372,7 @@ public final class OfflineAuthSessionService {
 
     enum OfflineAuthStage {
         REGISTER,
-        LOGIN,
-        RECONNECT_LOGIN;
+        LOGIN;
     }
 
     static final class PendingOfflineAuth {

@@ -14,7 +14,6 @@
     "auth.message.login_success": "§aLogin successful.",
     "auth.prompt.register": "§6You are not registered. Use §e/register <password> <confirmPassword> §6to register.",
     "auth.prompt.login": "§6This account is registered. Use §e/login <password> §6to log in.",
-    "auth.prompt.reconnect_login": "§6This account is registered. Leave and rejoin the server, then use §e/login <password>",
     "auth.command.online_add.success": "§aAdded §f%s §ato the online list.",
     "auth.command.online_add.failure": "§cFailed to add to the online list: §f%s",
     "auth.command.online_remove.success": "§aRemoved §f%s §afrom the online list.",

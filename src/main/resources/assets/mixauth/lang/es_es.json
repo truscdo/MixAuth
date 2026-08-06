@@ -14,7 +14,6 @@
     "auth.message.login_success": "\u00a7aInicio de sesi\u00f3n exitoso.",
     "auth.prompt.register": "\u00a76No est\u00e1s registrado. Usa \u00a7e/register <contrase\u00f1a> <confirmarContrase\u00f1a> \u00a76para registrarte.",
     "auth.prompt.login": "\u00a76Esta cuenta est\u00e1 registrada. Usa \u00a7e/login <contrase\u00f1a> \u00a76para iniciar sesi\u00f3n.",
-    "auth.prompt.reconnect_login": "\u00a76Esta cuenta est\u00e1 registrada. Sal y vuelve a entrar al servidor, luego usa \u00a7e/login <contrase\u00f1a>",
     "auth.command.online_add.success": "\u00a7aSe agreg\u00f3 \u00a7f%s \u00a7aa la lista premium.",
     "auth.command.online_add.failure": "\u00a7cError al agregar a la lista premium: \u00a7f%s",
     "auth.command.online_remove.success": "\u00a7aSe elimin\u00f3 \u00a7f%s \u00a7ade la lista premium.",

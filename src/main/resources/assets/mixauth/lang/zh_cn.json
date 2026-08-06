@@ -14,7 +14,6 @@
     "auth.message.login_success": "§a登录成功",
     "auth.prompt.register": "§6你尚未注册，请输入 §e/register <密码> <重复密码> §6完成注册",
     "auth.prompt.login": "§6该账号已注册，请输入 §e/login <密码> §6完成登录",
-    "auth.prompt.reconnect_login": "§6该账号已注册，请退出后重新进入服务器，再使用 §e/login <密码>",
     "auth.command.online_add.success": "§a已将 §f%s §a加入正版模式名单",
     "auth.command.online_add.failure": "§c加入正版模式名单失败：§f%s",
     "auth.command.online_remove.success": "§a已将 §f%s §a移出正版模式名单",
