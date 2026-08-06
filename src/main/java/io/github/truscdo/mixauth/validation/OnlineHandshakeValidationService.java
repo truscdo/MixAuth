@@ -33,21 +33,49 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
-import java.security.PublicKey;
 import java.security.SecureRandom;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 public final class OnlineHandshakeValidationService {
     private static final Logger LOGGER = LogUtil.getLogger();
     private static final String PROFILE_LOOKUP_BY_NAME_URL = "https://api.minecraftservices.com/minecraft/profile/lookup/name/";
     private static final Map<String, PendingHandshake> PENDING = new ConcurrentHashMap<>();
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+
+    /**
+     * 慢路径执行器：固定少量线程 + 有界队列。缓存被掏空时在后台等待生产者补货，
+     * 队列满则拒绝（客户端收到"服务器繁忙"断开），避免任务无限堆积。
+     */
+    private static final ExecutorService HELLO_EXECUTOR = createHelloExecutor();
+
+    private static ExecutorService createHelloExecutor() {
+        ThreadPoolExecutor executor = new ThreadPoolExecutor(
+                1,
+                2,
+                60L,
+                TimeUnit.SECONDS,
+                new ArrayBlockingQueue<>(256),
+                runnable -> {
+                    Thread thread = new Thread(runnable, "mixauth-keygen");
+                    thread.setDaemon(true);
+                    return thread;
+                },
+                new ThreadPoolExecutor.AbortPolicy());
+        executor.allowCoreThreadTimeOut(true);
+        return executor;
+    }
 
     private OnlineHandshakeValidationService() {
     }
@@ -56,15 +84,54 @@ public final class OnlineHandshakeValidationService {
         return !server.usesAuthentication();
     }
 
-    public static ClientboundHelloPacket beginValidation(
-            MinecraftServer server,
+    /**
+     * 开始正版握手。RSA 密钥对来源为 {@link KeyPairCache}，生成已剥离出服务器主线程：
+     * <ul>
+     * <li>快路径：缓存命中，主线程仅做非阻塞取用 + 组装报文（微秒级，无冻结）；</li>
+     * <li>慢路径：缓存被掏空（突发/洪水）时，改由后台线程等待生产者补货，
+     * 主线程绝不执行 RSA 密钥生成。</li>
+     * </ul>
+     * 调用方须在 future 完成后再发送 Hello 报文（建议回到服务器主线程发送）。
+     */
+    public static CompletableFuture<ClientboundHelloPacket> beginValidationAsync(
             Connection connection,
             ServerboundHelloPacket packet,
-            String serverId) throws CryptException {
+            String serverId) {
+        KeyPair keyPair = KeyPairCache.poll();
+        if (keyPair != null) {
+            return completeOrFailed(() -> buildHello(connection, packet, serverId, keyPair));
+        }
+
+        LOGGER.warn("Key pair cache drained; deferring handshake for {} to background key generation", packet.name());
+        try {
+            return CompletableFuture.supplyAsync(
+                    () -> buildHello(connection, packet, serverId, awaitKeyPair()),
+                    HELLO_EXECUTOR);
+        } catch (RejectedExecutionException rejectedExecutionException) {
+            LOGGER.warn("Background key generation saturated; rejecting handshake for {}", packet.name());
+            return CompletableFuture.failedFuture(
+                    new IllegalStateException("Background key generation saturated", rejectedExecutionException));
+        }
+    }
+
+    private static KeyPair awaitKeyPair() {
+        try {
+            return KeyPairCache.take();
+        } catch (InterruptedException interruptedException) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(
+                    "Interrupted while waiting for a pre-generated key pair", interruptedException);
+        }
+    }
+
+    private static ClientboundHelloPacket buildHello(
+            Connection connection,
+            ServerboundHelloPacket packet,
+            String serverId,
+            KeyPair keyPair) {
         cleanupExpiredEntries();
 
         String key = connectionKey(connection);
-        KeyPair keyPair = Crypt.generateKeyPair();
         byte[] challenge = new byte[4];
         SECURE_RANDOM.nextBytes(challenge);
 
@@ -77,8 +144,16 @@ public final class OnlineHandshakeValidationService {
                 System.currentTimeMillis());
         PENDING.put(key, pendingHandshake);
 
-        PublicKey publicKey = keyPair.getPublic();
-        return new ClientboundHelloPacket(serverId, publicKey.getEncoded(), challenge, true);
+        return new ClientboundHelloPacket(serverId, keyPair.getPublic().getEncoded(), challenge, true);
+    }
+
+    private static CompletableFuture<ClientboundHelloPacket> completeOrFailed(
+            Supplier<ClientboundHelloPacket> supplier) {
+        try {
+            return CompletableFuture.completedFuture(supplier.get());
+        } catch (RuntimeException runtimeException) {
+            return CompletableFuture.failedFuture(runtimeException);
+        }
     }
 
     public static PendingKeyState pendingKeyState(Connection connection) {
@@ -236,7 +311,8 @@ public final class OnlineHandshakeValidationService {
 
             GameProfile profile = parseGameProfile(body, username);
             if (profile == null || profile.getId() == null) {
-                LOGGER.warn("Mojang profile lookup returned malformed profile data for {} (HTTP 200, parse failed)", username);
+                LOGGER.warn("Mojang profile lookup returned malformed profile data for {} (HTTP 200, parse failed)",
+                        username);
                 return new PreLoginCheckResult.Disconnect(
                         username, requestedProfileId,
                         AuthLocalizedText.of("auth.validation.reason.mojang_data_error"));

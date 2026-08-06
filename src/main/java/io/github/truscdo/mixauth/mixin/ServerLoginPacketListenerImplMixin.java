@@ -36,6 +36,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import java.lang.reflect.Field;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.RejectedExecutionException;
 
 @Mixin(ServerLoginPacketListenerImpl.class)
 abstract class ServerLoginPacketListenerImplMixin {
@@ -85,8 +87,7 @@ abstract class ServerLoginPacketListenerImplMixin {
         if (remainingBlockedMillis > 0L) {
             this.disconnect(AuthTranslations.componentForConfiguredLanguage(
                     "auth.error.offline_temporarily_blocked",
-                    OfflineAuthService.formatDuration(AuthServerConfig.defaultLanguage(), remainingBlockedMillis)
-            ));
+                    OfflineAuthService.formatDuration(AuthServerConfig.defaultLanguage(), remainingBlockedMillis)));
             return;
         }
 
@@ -146,7 +147,8 @@ abstract class ServerLoginPacketListenerImplMixin {
 
     @Inject(method = "handleKey", at = @At("HEAD"), cancellable = true)
     private void auth$interceptKey(ServerboundKeyPacket packet, CallbackInfo callbackInfo) {
-        OnlineHandshakeValidationService.PendingKeyState pendingKeyState = OnlineHandshakeValidationService.pendingKeyState(this.connection);
+        OnlineHandshakeValidationService.PendingKeyState pendingKeyState = OnlineHandshakeValidationService
+                .pendingKeyState(this.connection);
         if (pendingKeyState == OnlineHandshakeValidationService.PendingKeyState.NONE) {
             return;
         }
@@ -161,21 +163,24 @@ abstract class ServerLoginPacketListenerImplMixin {
                         this.requestedUsername, auth$failureText(validationResult.failureReason()));
                 this.disconnect(AuthTranslations.componentForConfiguredLanguage(
                         "auth.validation.failed_with_reason",
-                        auth$failureText(validationResult.failureReason())
-                ));
+                        auth$failureText(validationResult.failureReason())));
                 return;
             }
 
             OnlineHandshakeValidationService.requestHasJoined(validationResult)
-                    .whenComplete((result, throwable) -> this.server.execute(() -> auth$finishValidation(result, throwable)));
+                    .whenComplete(
+                            (result, throwable) -> this.server.execute(() -> auth$finishValidation(result, throwable)));
         } catch (CryptException cryptException) {
             OnlineHandshakeValidationService.clear(this.connection);
             AUTH_LOGGER.error("Failed to process online authentication key response", cryptException);
-            this.disconnect(AuthTranslations.componentForConfiguredLanguage("auth.validation.reason.client_verification_failed"));
+            this.disconnect(AuthTranslations
+                    .componentForConfiguredLanguage("auth.validation.reason.client_verification_failed"));
         } catch (RuntimeException runtimeException) {
             OnlineHandshakeValidationService.clear(this.connection);
-            AUTH_LOGGER.error("Unexpected failure while processing online authentication key response", runtimeException);
-            this.disconnect(AuthTranslations.componentForConfiguredLanguage("auth.validation.reason.server_internal_error"));
+            AUTH_LOGGER.error("Unexpected failure while processing online authentication key response",
+                    runtimeException);
+            this.disconnect(
+                    AuthTranslations.componentForConfiguredLanguage("auth.validation.reason.server_internal_error"));
         }
     }
 
@@ -200,8 +205,7 @@ abstract class ServerLoginPacketListenerImplMixin {
             auth$disconnectAfterOnlineValidationFailure(
                     this.requestedUsername,
                     this.auth$requestedProfileId,
-                    AuthLocalizedText.of("auth.validation.reason.mojang_api_unavailable")
-            );
+                    AuthLocalizedText.of("auth.validation.reason.mojang_api_unavailable"));
             return;
         }
 
@@ -209,8 +213,7 @@ abstract class ServerLoginPacketListenerImplMixin {
             auth$disconnectAfterOnlineValidationFailure(
                     this.requestedUsername,
                     this.auth$requestedProfileId,
-                    AuthLocalizedText.of("auth.validation.reason.mojang_api_unavailable")
-            );
+                    AuthLocalizedText.of("auth.validation.reason.mojang_api_unavailable"));
             return;
         }
 
@@ -220,8 +223,7 @@ abstract class ServerLoginPacketListenerImplMixin {
                 auth$disconnectAfterOnlineValidationFailure(
                         result.username(),
                         this.auth$requestedProfileId,
-                        AuthLocalizedText.of("auth.validation.reason.mojang_data_error")
-                );
+                        AuthLocalizedText.of("auth.validation.reason.mojang_data_error"));
                 return;
             }
 
@@ -231,7 +233,8 @@ abstract class ServerLoginPacketListenerImplMixin {
             return;
         }
 
-        auth$disconnectAfterOnlineValidationFailure(result.username(), this.auth$requestedProfileId, result.failureReason());
+        auth$disconnectAfterOnlineValidationFailure(result.username(), this.auth$requestedProfileId,
+                result.failureReason());
     }
 
     @Unique
@@ -249,41 +252,61 @@ abstract class ServerLoginPacketListenerImplMixin {
     }
 
     @Unique
-    private void auth$disconnectAfterOnlineValidationFailure(String username, UUID requestedProfileId, AuthLocalizedText failureReason) {
+    private void auth$disconnectAfterOnlineValidationFailure(String username, UUID requestedProfileId,
+            AuthLocalizedText failureReason) {
         String suffix = auth$failureText(failureReason);
-        AUTH_LOGGER.warn("auth validation failed after online handshake for {}. Disconnecting client instead of offline fallback: {}", username, suffix);
+        AUTH_LOGGER.warn(
+                "auth validation failed after online handshake for {}. Disconnecting client instead of offline fallback: {}",
+                username, suffix);
         auth$disconnectBeforeHandshake(username, requestedProfileId, suffix);
     }
 
     @Unique
     private void auth$beginOnlineHandshake(ServerboundHelloPacket packet) {
-        try {
-            auth$setState("KEY");
+        // 密钥对由后台预生成/生成，绝不阻塞主线程；报文就绪后再回主线程发送。
+        OnlineHandshakeValidationService.beginValidationAsync(this.connection, packet, this.serverId)
+                .whenComplete(
+                        (helloPacket, throwable) -> this.auth$scheduleDeferredHello(packet, helloPacket, throwable));
+    }
 
-            ClientboundHelloPacket helloPacket = OnlineHandshakeValidationService.beginValidation(
-                    this.server,
-                    this.connection,
-                    packet,
-                    this.serverId
-            );
-            this.connection.send(helloPacket);
-        } catch (CryptException cryptException) {
-            AUTH_LOGGER.error("Failed to start online authentication handshake for {}", packet.name(), cryptException);
-            this.disconnect(AuthTranslations.componentForConfiguredLanguage("auth.validation.reason.server_internal_error"));
-        } catch (RuntimeException runtimeException) {
-            AUTH_LOGGER.error("Unexpected failure before online authentication key exchange for {}", packet.name(), runtimeException);
-            this.disconnect(AuthTranslations.componentForConfiguredLanguage("auth.validation.reason.server_internal_error"));
+    @Unique
+    private void auth$scheduleDeferredHello(ServerboundHelloPacket packet, ClientboundHelloPacket helloPacket,
+            Throwable throwable) {
+        try {
+            this.server.execute(() -> {
+                if (this.auth$disconnected) {
+                    AUTH_LOGGER.debug("auth deferred online handshake skipped — client already disconnected");
+                    return;
+                }
+                if (throwable != null) {
+                    Throwable cause = throwable instanceof CompletionException completionException
+                            && completionException.getCause() != null
+                                    ? completionException.getCause()
+                                    : throwable;
+                    AUTH_LOGGER.error("Failed to start online authentication handshake for {}", packet.name(), cause);
+                    this.disconnect(AuthTranslations.componentForConfiguredLanguage(
+                            "auth.validation.reason.server_internal_error"));
+                    return;
+                }
+                auth$setState("KEY");
+                this.connection.send(helloPacket);
+            });
+        } catch (RejectedExecutionException rejectedExecutionException) {
+            AUTH_LOGGER.debug("Server executor rejected deferred online handshake for {} (server shutting down?)",
+                    packet.name());
         }
     }
 
     @Unique
-    private void auth$disconnectBeforeHandshake(String username, UUID requestedProfileId, AuthLocalizedText failureReason) {
+    private void auth$disconnectBeforeHandshake(String username, UUID requestedProfileId,
+            AuthLocalizedText failureReason) {
         auth$disconnectBeforeHandshake(username, requestedProfileId, auth$failureText(failureReason));
     }
 
     @Unique
     private void auth$disconnectBeforeHandshake(String username, UUID requestedProfileId, String failureReason) {
-        this.disconnect(AuthTranslations.componentForConfiguredLanguage("auth.validation.failed_with_reason", failureReason));
+        this.disconnect(
+                AuthTranslations.componentForConfiguredLanguage("auth.validation.failed_with_reason", failureReason));
     }
 
     @Unique
@@ -296,7 +319,7 @@ abstract class ServerLoginPacketListenerImplMixin {
     }
 
     @Unique
-    @SuppressWarnings({"rawtypes", "unchecked"})
+    @SuppressWarnings({ "rawtypes", "unchecked" })
     private void auth$setState(String stateName) {
         try {
             Class<? extends Enum> enumClass = (Class<? extends Enum>) AUTH_STATE_FIELD.getType().asSubclass(Enum.class);
@@ -314,7 +337,8 @@ abstract class ServerLoginPacketListenerImplMixin {
             field.setAccessible(true);
             return field;
         } catch (NoSuchFieldException noSuchFieldException) {
-            throw new IllegalStateException("Failed to locate ServerLoginPacketListenerImpl.state", noSuchFieldException);
+            throw new IllegalStateException("Failed to locate ServerLoginPacketListenerImpl.state",
+                    noSuchFieldException);
         }
     }
 }
