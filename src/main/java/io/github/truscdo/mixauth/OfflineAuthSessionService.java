@@ -78,17 +78,17 @@ public final class OfflineAuthSessionService {
         sendAuthPrompt(player, stage);
     }
 
-    static PendingOfflineAuth getPendingAuth(ServerPlayer player) {
+    public static PendingOfflineAuth getPendingAuth(ServerPlayer player) {
         return PENDING_OFFLINE_AUTHS.get(player.getGameProfile().getId());
     }
 
-    static void completeAuthentication(ServerPlayer player, String messageKey, Object... args) {
+    public static void completeAuthentication(ServerPlayer player, String messageKey, Object... args) {
         clearPendingAuth(player);
         restoreInventoryView(player);
         player.sendSystemMessage(AuthTranslations.componentForPlayer(player, messageKey, args));
     }
 
-    static PendingOfflineAuth clearPendingAuth(ServerPlayer player) {
+    public static PendingOfflineAuth clearPendingAuth(ServerPlayer player) {
         PendingOfflineAuth pendingOfflineAuth = PENDING_OFFLINE_AUTHS.remove(player.getGameProfile().getId());
         if (pendingOfflineAuth == null) {
             LogUtil.getLogger().warn("Attempted to complete authentication for player {} who has no pending auth",
@@ -107,7 +107,7 @@ public final class OfflineAuthSessionService {
         return pendingOfflineAuth;
     }
 
-    static void sendAuthPrompt(ServerPlayer player, OfflineAuthStage stage) {
+    public static void sendAuthPrompt(ServerPlayer player, OfflineAuthStage stage) {
         player.sendSystemMessage(AuthTranslations.componentForPlayer(player, switch (stage) {
             case REGISTER -> "auth.prompt.register";
             case LOGIN -> "auth.prompt.login";
@@ -370,12 +370,12 @@ public final class OfflineAuthSessionService {
         return normalized.toLowerCase(Locale.ROOT);
     }
 
-    enum OfflineAuthStage {
+    public enum OfflineAuthStage {
         REGISTER,
         LOGIN;
     }
 
-    static final class PendingOfflineAuth {
+    public static final class PendingOfflineAuth {
         final GameType originalGameType;
         final MobEffectInstance originalBlindnessEffect;
         final double lockedX;
@@ -401,6 +401,18 @@ public final class OfflineAuthSessionService {
             this.nextPromptAtMillis = now + promptIntervalMillis();
             this.nextActionDeniedMessageAtMillis = 0L;
             this.nextInventorySpoofAtMillis = 0L;
+        }
+
+        public OfflineAuthStage stage() {
+            return stage;
+        }
+
+        public int recordFailedLoginAttempt() {
+            return ++failedLoginAttempts;
+        }
+
+        public void scheduleNextPrompt() {
+            this.nextPromptAtMillis = System.currentTimeMillis() + promptIntervalMillis();
         }
     }
 }
