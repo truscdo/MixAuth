@@ -18,7 +18,26 @@ sourceSets.main.resources {
     exclude 'src/generated/**/.cache'
 }
 
+// 承载解包后的 testframework 的源集（见 neoForge.mods 块注释）
+sourceSets {
+    testframeworkMod
+}
+
+configurations {
+    testframeworkModRuntime
+}
+
 repositories {
+    // 仅 testframework 走 mavenLocal：当前网络环境下 JVM 直连 maven.neoforged.net 被 CDN 拦截（Connection reset），
+    // testframework artifact 已通过脚本手动放入 ~/.m2/repository/net/neoforged/testframework/21.1.1/
+    // 注意：exclusiveContent 的 filter 内多个 include 规则是 OR 语义，只允许这一条 includeModule，
+    // 否则整个 net.neoforged group（neoform-runtime/neoforge 等）都会被错误排他到 mavenLocal。
+    exclusiveContent {
+        forRepository { mavenLocal() }
+        filter {
+            includeModule 'net.neoforged', 'testframework'
+        }
+    }
 }
 
 base {
@@ -49,7 +68,12 @@ neoForge {
 
         gameTestServer {
             type = 'gameTestServer'
+            // 框架 id 为 mixauth:tests（namespace=mixauth），GameTest 结构模板命名空间即 mixauth；
+            // 测试框架（@Mod mixauth_tests）的测试以 mixauth 命名空间承载，故此处只留 mixauth
             systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+            // 独立测试运行目录：预写小值配置（mixauth-server.toml）/ server.properties / eula.txt，
+            // 不污染开发用 run/ 目录；世界与 DB 随目录清理而重置（幂等）
+            gameDirectory = file('run-gametest')
         }
 
         data {
@@ -70,8 +94,39 @@ neoForge {
             sourceSet sourceSets.main
             sourceSet sourceSets.test
         }
+        // 官方做法（对照 NeoForge tests/build.gradle）：testframework 必须声明为正式 mod
+        // （source set → moddev 生成 legacyClasspath/目录条目），FML 才会以"目录 mod"加载它，
+        // 其模块层才能访问 Minecraft 类。若仅放入 additionalRuntimeClasspath，FML 会把它当作
+        // boot 层 classpath mod 加载，运行时出现 NoClassDefFoundError: net/minecraft/.../Component。
+        testframework {
+            sourceSet sourceSets.testframeworkMod
+        }
     }
+
+    // 官方解法：把 modding 依赖（Minecraft/NeoForge 本地 artifact）注入 test 源集的
+    // compile/runtime classpath。moddev 对 neoforge 依赖的重定向仅对 main 生效，
+    // 因此不能依赖 testImplementation "net.neoforged:neoforge"（无效且多余）。
+    addModdingDependenciesTo sourceSets.test
 }
+
+// 解包 testframework jar → 目录：moddev 把 testframeworkMod 源集的 output 写入
+// legacyClasspath，FML 以目录 mod 加载（同 mixauth 的 build/classes/java/main 行为）。
+// 注意：只解包 testframework 本体（filter 掉传递依赖）。否则 testframework 的
+// runtime 传递依赖 neoforge 会把 mcp/client、coremods 等混入目录，导致 testframework
+// 模块导出 mcp.client 与 minecraft 模块 split-package 冲突（ResolutionException）。
+def unpackTestframework = tasks.register('unpackTestframework', Sync) {
+    from({
+        configurations.testframeworkModRuntime
+                .filter { it.name.contains('testframework') }
+                .collect { zipTree(it) }
+    })
+    into layout.buildDirectory.dir('testframework-mod')
+    // zipTree 解包时 jar 内 MANIFEST.MF 与目录条目可能重复，直接排除（目录 mod 无需 manifest）
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+// 让 testframeworkMod 源集的类输出指向解包目录（无自有编译产物，纯 jar 内容）
+sourceSets.testframeworkMod.output.classesDirs.from(unpackTestframework.map { it.destinationDir })
 
 configurations {
     runtimeClasspath.extendsFrom localRuntime
@@ -80,8 +135,17 @@ configurations {
 dependencies {
     testImplementation 'org.junit.jupiter:junit-jupiter:5.11.0'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
-    testImplementation 'org.slf4j:slf4j-api:2.0.16'
-    testRuntimeOnly 'org.slf4j:slf4j-simple:2.0.16'
+    // slf4j 版本须与 modding 依赖（minecraft-dependencies）的 strictly 2.0.9 约束一致，
+    // 否则 testCompileClasspath 解析冲突
+    testImplementation 'org.slf4j:slf4j-api:2.0.9'
+    testRuntimeOnly 'org.slf4j:slf4j-simple:2.0.9'
+
+    // NeoForge testframework：GameTest 集成测试（版本与 neo_version 同步）
+    // 注：Minecraft/NeoForge 类由 addModdingDependenciesTo sourceSets.test 注入，勿再加 neoforge 依赖
+    // 注：dev 运行时 testframework 以"目录 mod"加载（mods.testframework → unpackTestframework），
+    // 故不需要 additionalRuntimeClasspath（否则会以 boot 层 classpath mod 重复加载）
+    testImplementation "net.neoforged:testframework:${project.neo_version}"
+    testframeworkModRuntime "net.neoforged:testframework:${project.neo_version}"
 
     jarJar(implementation(group: 'at.favre.lib', name: 'bcrypt')) {
         version {
@@ -115,7 +179,8 @@ var generateModMetadata = tasks.register('generateModMetadata', ProcessResources
             mod_id                 : mod_id,
             mod_name               : mod_name,
             mod_license            : mod_license,
-            mod_version            : mod_version
+            mod_version            : mod_version,
+            test_mod_id            : test_mod_id
     ]
 
     inputs.properties replaceProperties

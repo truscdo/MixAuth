@@ -1,28 +1,60 @@
-modLoader="javafml"
-loaderVersion="${loader_version_range}"
-license="${mod_license}"
+modLoader = "javafml"
+loaderVersion = "${loader_version_range}"
+license = "${mod_license}"
 
 [[mods]]
-modId="${mod_id}"
-version="${mod_version}"
-displayName="${mod_name}"
-description='''
+modId = "${mod_id}"
+version = "${mod_version}"
+displayName = "${mod_name}"
+description = '''
 NeoForge 1.21.1 template project.
 '''
 
+# 测试专用 mod 声明：承载测试源集内的 @Mod("mixauth_tests")（testframework 集成测试框架）。
+# 生产 jar 打包时不包含该 mod 的类（test 源集不参与打包），此声明仅为 FML 校验通过
+# （否则 @Mod 注解会成为 dangling entrypoint 导致启动失败）。
+[[mods]]
+modId = "${test_mod_id}"
+version = "1.0.0"
+displayName = "MixAuth GameTest Framework"
+description = '''
+MixAuth 集成测试专用框架 mod（NeoForge testframework 承载），仅在测试运行环境加载。
+'''
+
 [[mixins]]
-config="META-INF/${mod_id}.mixins.json"
+config = "META-INF/${mod_id}.mixins.json"
 
 [[dependencies.${mod_id}]]
-modId="neoforge"
-type="required"
-versionRange="[${neo_version},)"
-ordering="NONE"
-side="BOTH"
+modId = "neoforge"
+type = "required"
+versionRange = "[${neo_version},)"
+ordering = "NONE"
+side = "BOTH"
 
 [[dependencies.${mod_id}]]
-modId="minecraft"
-type="required"
-versionRange="${minecraft_version_range}"
-ordering="NONE"
-side="BOTH"
+modId = "minecraft"
+type = "required"
+versionRange = "${minecraft_version_range}"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.${test_mod_id}]]
+modId = "neoforge"
+type = "required"
+versionRange = "[${neo_version},)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.${test_mod_id}]]
+modId = "minecraft"
+type = "required"
+versionRange = "${minecraft_version_range}"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.${test_mod_id}]]
+modId = "${mod_id}"
+type = "optional"
+versionRange = "[1.0,)"
+ordering = "NONE"
+side = "BOTH"

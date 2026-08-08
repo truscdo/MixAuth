@@ -110,7 +110,12 @@ public final class KnownPlayerService {
         return LOGIN_MODES.remove(playerUuid);
     }
 
-    static void markLoginMode(UUID playerUuid, OnlineAuthService.LoginMode loginMode) {
+    /**
+     * 将登录模式预置到内存映射，供玩家进服（PlayerLoggedInEvent）时消费。
+     * <p>
+     * 公开可见性：GameTest 集成测试需要跨包预置登录模式以驱动进服路由分支。
+     */
+    public static void markLoginMode(UUID playerUuid, OnlineAuthService.LoginMode loginMode) {
         if (playerUuid != null) {
             LOGIN_MODES.put(playerUuid, loginMode);
         }
