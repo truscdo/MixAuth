@@ -6,12 +6,6 @@ import java.util.List;
 
 public final class PasswordPolicyValidator {
 
-    /**
-     * BCrypt 的硬性输入上限（UTF-8 字节）。超过该字节数的输入会被 BCrypt 静默截断，
-     * 导致不同密码可能产生相同哈希，因此任何超限密码都必须在此拒绝。
-     */
-    public static final int MAX_BCRYPT_INPUT_BYTES = 72;
-
     public enum Error {
         TOO_SHORT,
         TOO_LONG,
@@ -44,7 +38,7 @@ public final class PasswordPolicyValidator {
 
         // BCrypt 按 UTF-8 字节截断：字符长度合法但字节数超限的多字节密码同样必须拒绝。
         int byteLength = password.getBytes(StandardCharsets.UTF_8).length;
-        if (password.length() > maxLength || byteLength > MAX_BCRYPT_INPUT_BYTES) {
+        if (password.length() > maxLength || byteLength > PasswordHasher.MAX_INPUT_BYTES) {
             errors.add(Error.TOO_LONG);
         }
 

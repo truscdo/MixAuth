@@ -1,9 +1,9 @@
 package io.github.truscdo.mixauth.offline;
 
-import at.favre.lib.crypto.bcrypt.BCrypt;
 import io.github.truscdo.mixauth.AuthServerConfig;
 import io.github.truscdo.mixauth.KnownPlayerService;
 import io.github.truscdo.mixauth.LogUtil;
+import io.github.truscdo.mixauth.PasswordHasher;
 import io.github.truscdo.mixauth.db.OfflineLoginBlockDao;
 import io.github.truscdo.mixauth.db.OfflineTrustedLoginDao;
 import io.github.truscdo.mixauth.db.OfflineUserDao;
@@ -29,21 +29,17 @@ public final class OfflineAuthService {
     }
 
     public static boolean registerOfflineUser(UUID playerUuid, String password) {
-        String passwordHash = hashPassword(password);
+        String passwordHash = PasswordHasher.hash(password, AuthServerConfig.bcryptCost());
         return OfflineUserDao.insertOfflineUser(playerUuid, passwordHash);
     }
 
     public static void saveOfflinePassword(UUID playerUuid, String password) {
-        OfflineUserDao.saveOfflinePassword(playerUuid, hashPassword(password));
+        OfflineUserDao.saveOfflinePassword(playerUuid, PasswordHasher.hash(password, AuthServerConfig.bcryptCost()));
     }
 
     public static boolean verifyOfflinePassword(UUID playerUuid, String password) {
         String passwordHash = OfflineUserDao.findOfflinePasswordHash(playerUuid);
-        if (passwordHash == null) {
-            return false;
-        }
-
-        return BCrypt.verifyer().verify(password.toCharArray(), passwordHash).verified;
+        return PasswordHasher.verify(password, passwordHash);
     }
 
     public static void blockOfflineLogin(UUID playerUuid, long durationMillis) {
@@ -116,9 +112,5 @@ public final class OfflineAuthService {
 
     public static String formatDuration(String language, long durationMillis) {
         return AuthTranslations.formatDuration(language, durationMillis);
-    }
-
-    private static String hashPassword(String password) {
-        return BCrypt.withDefaults().hashToString(AuthServerConfig.bcryptCost(), password.toCharArray());
     }
 }
