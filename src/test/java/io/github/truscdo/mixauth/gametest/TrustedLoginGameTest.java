@@ -51,4 +51,30 @@ public class TrustedLoginGameTest extends AuthGameTestBase {
                 OfflineAuthService.describeTrustedLoginWindow());
         helper.succeed();
     }
+
+    /**
+     * 窗口外的信任记录：窗口检查时既不会放行免密，也会被顺带清理（表不再无限增长）。
+     */
+    @GameTest
+    @EmptyTemplate
+    @TestHolder(description = { "窗口外的信任记录在窗口检查时被清理，玩家回到密码登录" })
+    static void expiredTrustRecordCleanedUp(AuthGameTestBase helper) {
+        UUID uuid = offlineUuid("TrustStale");
+        helper.resetPlayerData(uuid);
+        helper.registerPassword(uuid, "pw123456");
+        // 记录信任记录后人为把 authenticated_at 改到窗口外（模拟很久以前登录）。
+        helper.recordTrustedIp(uuid, TRUST_IP);
+        helper.expireTrustedIp(uuid, TRUST_IP);
+
+        // 窗口检查：过期记录既不生效、也会被顺带清理。
+        helper.assertTrue(!OfflineAuthService.canBypassOfflineLogin(uuid, TRUST_IP),
+                "expected expired trust window to be rejected");
+        helper.assertTrue(!helper.hasTrustedIp(uuid, TRUST_IP),
+                "expected expired trust record to be cleaned up");
+
+        // 回归：进服应回到 LOGIN 待认证（而非免密直进）。
+        GameTestPlayer player = helper.joinServer("TrustStale", uuid, OnlineAuthService.LoginMode.OFFLINE, TRUST_IP);
+        helper.assertPendingStage(player, OfflineAuthSessionService.OfflineAuthStage.LOGIN);
+        helper.succeed();
+    }
 }

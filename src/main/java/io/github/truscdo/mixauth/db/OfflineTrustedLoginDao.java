@@ -66,6 +66,18 @@ public final class OfflineTrustedLoginDao {
                 "Failed to clear offline trusted logins");
     }
 
+    /**
+     * 删除所有 {@code authenticated_at} 早于指定时间戳的过期记录（免密窗口已失效的行）。
+     *
+     * @param validBefore 时间戳阈值，早于该值的记录视为过期
+     */
+    public static void deleteExpiredOfflineTrustedLogins(long validBefore) {
+        DatabaseSupport.executeUpdate(
+                "DELETE FROM offline_trusted_logins WHERE authenticated_at < ?",
+                stmt -> stmt.setLong(1, validBefore),
+                "Failed to delete expired offline trusted logins");
+    }
+
     private static void mergeOfflineTrustedLogin(UUID playerUuid, String ipAddress, long authenticatedAt) {
         long now = Instant.now().toEpochMilli();
         String sql = """

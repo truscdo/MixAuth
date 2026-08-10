@@ -84,6 +84,8 @@ public final class OfflineAuthService {
         }
 
         long validAfter = Instant.now().toEpochMilli() - AuthServerConfig.trustedLoginWindowMillis();
+        // 每次窗口检查顺带清理已过期的免密记录，避免 offline_trusted_logins 表无限增长
+        OfflineTrustedLoginDao.deleteExpiredOfflineTrustedLogins(validAfter);
         if (!OfflineTrustedLoginDao.hasRecentOfflineTrustedLogin(playerUuid, ipAddress, validAfter)) {
             return false;
         }

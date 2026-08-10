@@ -1,10 +1,12 @@
 package io.github.truscdo.mixauth.gametest;
 
 import com.mojang.authlib.GameProfile;
+import io.github.truscdo.mixauth.AuthServerConfig;
 import io.github.truscdo.mixauth.KnownPlayerService;
 import io.github.truscdo.mixauth.offline.OfflineAuthService;
 import io.github.truscdo.mixauth.offline.OfflineAuthSessionService;
 import io.github.truscdo.mixauth.online.OnlineAuthService;
+import io.github.truscdo.mixauth.db.DatabaseSupport;
 import io.github.truscdo.mixauth.localization.AuthTranslations;
 import io.netty.channel.embedded.EmbeddedChannel;
 import net.minecraft.core.UUIDUtil;
@@ -25,6 +27,8 @@ import net.neoforged.testframework.gametest.GameTestPlayer;
 
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
+import java.sql.ResultSet;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -191,6 +195,34 @@ public class AuthGameTestBase extends ExtendedGameTestHelper {
     /** 直接落库：记录一条免密登录信任记录。 */
     protected void recordTrustedIp(UUID uuid, String ip) {
         OfflineAuthService.recordTrustedOfflineLogin(uuid, ip);
+    }
+
+    /**
+     * 直接落库：把指定信任记录的 {@code authenticated_at} 改到免密窗口之外
+     * （模拟很久以前的登录留下的过期记录）。
+     */
+    protected void expireTrustedIp(UUID uuid, String ip) {
+        long beforeWindow = Instant.now().toEpochMilli() - AuthServerConfig.trustedLoginWindowMillis() - 60_000L;
+        DatabaseSupport.executeUpdate(
+                "UPDATE offline_trusted_logins SET authenticated_at = ? WHERE player_uuid = ? AND ip_address = ?",
+                stmt -> {
+                    stmt.setLong(1, beforeWindow);
+                    stmt.setString(2, uuid.toString());
+                    stmt.setString(3, ip);
+                },
+                "test setup: expire trusted ip");
+    }
+
+    /** 断言某条信任记录是否仍存在于表中（不论窗口内外）。 */
+    protected boolean hasTrustedIp(UUID uuid, String ip) {
+        return DatabaseSupport.executeQuery(
+                "SELECT 1 FROM offline_trusted_logins WHERE player_uuid = ? AND ip_address = ? LIMIT 1",
+                stmt -> {
+                    stmt.setString(1, uuid.toString());
+                    stmt.setString(2, ip);
+                },
+                ResultSet::next,
+                "test setup: check trusted ip exists");
     }
 
     /**
