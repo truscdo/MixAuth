@@ -4,6 +4,7 @@ import io.github.truscdo.mixauth.db.KnownPlayerDao;
 import io.github.truscdo.mixauth.db.OfflineLoginBlockDao;
 import io.github.truscdo.mixauth.db.OfflineTrustedLoginDao;
 import io.github.truscdo.mixauth.db.OfflineUserDao;
+import io.github.truscdo.mixauth.online.OnlineAuthService;
 import net.minecraft.core.UUIDUtil;
 import org.slf4j.Logger;
 

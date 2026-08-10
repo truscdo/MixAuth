@@ -2,9 +2,9 @@ package io.github.truscdo.mixauth.gametest;
 
 import com.mojang.authlib.GameProfile;
 import io.github.truscdo.mixauth.KnownPlayerService;
-import io.github.truscdo.mixauth.OfflineAuthService;
-import io.github.truscdo.mixauth.OfflineAuthSessionService;
-import io.github.truscdo.mixauth.OnlineAuthService;
+import io.github.truscdo.mixauth.offline.OfflineAuthService;
+import io.github.truscdo.mixauth.offline.OfflineAuthSessionService;
+import io.github.truscdo.mixauth.online.OnlineAuthService;
 import io.github.truscdo.mixauth.localization.AuthTranslations;
 import io.netty.channel.embedded.EmbeddedChannel;
 import net.minecraft.core.UUIDUtil;

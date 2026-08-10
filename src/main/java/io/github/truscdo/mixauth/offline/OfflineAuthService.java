@@ -1,10 +1,14 @@
-package io.github.truscdo.mixauth;
+package io.github.truscdo.mixauth.offline;
 
 import at.favre.lib.crypto.bcrypt.BCrypt;
+import io.github.truscdo.mixauth.AuthServerConfig;
+import io.github.truscdo.mixauth.KnownPlayerService;
+import io.github.truscdo.mixauth.LogUtil;
 import io.github.truscdo.mixauth.db.OfflineLoginBlockDao;
 import io.github.truscdo.mixauth.db.OfflineTrustedLoginDao;
 import io.github.truscdo.mixauth.db.OfflineUserDao;
 import io.github.truscdo.mixauth.localization.AuthTranslations;
+import io.github.truscdo.mixauth.online.OnlineAuthService;
 import org.slf4j.Logger;
 
 import java.time.Instant;

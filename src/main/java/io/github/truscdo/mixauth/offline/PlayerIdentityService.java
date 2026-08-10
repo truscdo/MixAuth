@@ -1,4 +1,4 @@
-package io.github.truscdo.mixauth;
+package io.github.truscdo.mixauth.offline;
 
 import com.mojang.authlib.GameProfile;
 import net.minecraft.core.UUIDUtil;

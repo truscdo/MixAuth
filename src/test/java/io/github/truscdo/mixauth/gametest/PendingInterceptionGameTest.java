@@ -1,7 +1,7 @@
 package io.github.truscdo.mixauth.gametest;
 
-import io.github.truscdo.mixauth.OfflineAuthSessionService;
-import io.github.truscdo.mixauth.OnlineAuthService;
+import io.github.truscdo.mixauth.offline.OfflineAuthSessionService;
+import io.github.truscdo.mixauth.online.OnlineAuthService;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestInfo;
 import net.minecraft.network.chat.Component;

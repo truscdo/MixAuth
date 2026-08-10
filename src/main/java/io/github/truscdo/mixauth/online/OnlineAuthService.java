@@ -1,6 +1,8 @@
-package io.github.truscdo.mixauth;
+package io.github.truscdo.mixauth.online;
 
 import com.mojang.authlib.GameProfile;
+import io.github.truscdo.mixauth.KnownPlayerService;
+import io.github.truscdo.mixauth.LogUtil;
 import org.slf4j.Logger;
 
 import java.util.UUID;

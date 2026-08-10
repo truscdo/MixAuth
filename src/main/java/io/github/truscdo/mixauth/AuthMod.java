@@ -1,6 +1,7 @@
 package io.github.truscdo.mixauth;
 
 import io.github.truscdo.mixauth.db.DatabaseSupport;
+import io.github.truscdo.mixauth.offline.OfflineAuthSessionService;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.config.ModConfig;
