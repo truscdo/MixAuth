@@ -34,7 +34,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-import java.lang.reflect.Field;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -44,8 +43,6 @@ import java.util.concurrent.RejectedExecutionException;
 abstract class ServerLoginPacketListenerImplMixin {
     @Unique
     private static final Logger AUTH_LOGGER = LogUtil.getLogger();
-    @Unique
-    private static final Field AUTH_STATE_FIELD = resolveStateField();
     @Unique
     private volatile boolean auth$disconnected;
     @Unique
@@ -148,13 +145,24 @@ abstract class ServerLoginPacketListenerImplMixin {
 
     @Inject(method = "handleKey", at = @At("HEAD"), cancellable = true)
     private void auth$interceptKey(ServerboundKeyPacket packet, CallbackInfo callbackInfo) {
-        OnlineHandshakeValidationService.PendingKeyState pendingKeyState = OnlineHandshakeValidationService
-                .pendingKeyState(this.connection);
-        if (pendingKeyState == OnlineHandshakeValidationService.PendingKeyState.NONE) {
+        // 正版服：vanilla 全程自管，必须放行，否则会破坏 vanilla 在线验证
+        if (!OnlineHandshakeValidationService.shouldIntercept(this.server)) {
             return;
         }
 
+        // 离线服：key 包一律由本 Mod 接管，vanilla handleKey 永不执行
         callbackInfo.cancel();
+
+        OnlineHandshakeValidationService.PendingKeyState pendingKeyState = OnlineHandshakeValidationService
+                .pendingKeyState(this.connection);
+        if (pendingKeyState == OnlineHandshakeValidationService.PendingKeyState.NONE) {
+            // 本 Mod 未发起本次握手却收到 key 包：协议违规，显式断开（fail-closed）
+            OnlineHandshakeValidationService.clear(this.connection);
+            AUTH_LOGGER.warn("auth unexpected key packet from {}, no pending handshake", this.requestedUsername);
+            this.disconnect(AuthTranslations.componentForConfiguredLanguage(
+                    "auth.validation.reason.unexpected_key_packet"));
+            return;
+        }
 
         try {
             ValidationResult validationResult = OnlineHandshakeValidationService.handleKey(this.connection, packet);
@@ -289,7 +297,6 @@ abstract class ServerLoginPacketListenerImplMixin {
                             "auth.validation.reason.server_internal_error"));
                     return;
                 }
-                auth$setState("KEY");
                 this.connection.send(helloPacket);
             });
         } catch (RejectedExecutionException rejectedExecutionException) {
@@ -319,27 +326,4 @@ abstract class ServerLoginPacketListenerImplMixin {
         return failureReason.textForConfiguredLanguage();
     }
 
-    @Unique
-    @SuppressWarnings({ "rawtypes", "unchecked" })
-    private void auth$setState(String stateName) {
-        try {
-            Class<? extends Enum> enumClass = (Class<? extends Enum>) AUTH_STATE_FIELD.getType().asSubclass(Enum.class);
-            Object enumValue = Enum.valueOf(enumClass, stateName);
-            AUTH_STATE_FIELD.set(this, enumValue);
-        } catch (IllegalAccessException illegalAccessException) {
-            throw new IllegalStateException("Failed to set login state to " + stateName, illegalAccessException);
-        }
-    }
-
-    @Unique
-    private static Field resolveStateField() {
-        try {
-            Field field = ServerLoginPacketListenerImpl.class.getDeclaredField("state");
-            field.setAccessible(true);
-            return field;
-        } catch (NoSuchFieldException noSuchFieldException) {
-            throw new IllegalStateException("Failed to locate ServerLoginPacketListenerImpl.state",
-                    noSuchFieldException);
-        }
-    }
 }

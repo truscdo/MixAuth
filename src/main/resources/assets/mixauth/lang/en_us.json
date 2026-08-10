@@ -63,5 +63,6 @@
     "auth.validation.reason.client_verification_failed": "§cClient-side authentication failed. Please check your account login status.",
     "auth.validation.reason.handshake_timed_out": "§cThe online authentication handshake timed out. Rejoin the server and try again.",
     "auth.validation.reason.missing_username": "§cThe client did not provide a valid username.",
-    "auth.validation.reason.server_internal_error": "§cInternal server authentication error."
+    "auth.validation.reason.server_internal_error": "§cInternal server authentication error.",
+    "auth.validation.reason.unexpected_key_packet": "§cUnexpected key packet"
 }

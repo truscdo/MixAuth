@@ -63,5 +63,6 @@
     "auth.validation.reason.client_verification_failed": "§c客户端正版验证失败，请检查账号登录状态",
     "auth.validation.reason.handshake_timed_out": "§c正版握手超时，请重新进入服务器后再试",
     "auth.validation.reason.missing_username": "§c客户端未提供有效的用户名",
-    "auth.validation.reason.server_internal_error": "§c服务器内部验证错误"
+    "auth.validation.reason.server_internal_error": "§c服务器内部验证错误",
+    "auth.validation.reason.unexpected_key_packet": "§c意外的密钥交换数据包"
 }

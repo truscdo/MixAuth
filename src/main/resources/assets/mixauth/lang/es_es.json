@@ -63,5 +63,6 @@
     "auth.validation.reason.client_verification_failed": "\u00a7cLa autenticaci\u00f3n del cliente fall\u00f3. Verifica el estado de tu cuenta.",
     "auth.validation.reason.handshake_timed_out": "\u00a7cLa autenticaci\u00f3n premium agot\u00f3 el tiempo de espera. Vuelve a entrar al servidor e int\u00e9ntalo de nuevo.",
     "auth.validation.reason.missing_username": "\u00a7cEl cliente no proporcion\u00f3 un nombre de usuario v\u00e1lido.",
-    "auth.validation.reason.server_internal_error": "\u00a7cError interno de autenticaci\u00f3n del servidor."
+    "auth.validation.reason.server_internal_error": "\u00a7cError interno de autenticaci\u00f3n del servidor.",
+    "auth.validation.reason.unexpected_key_packet": "\u00a7cPaquete de clave inesperado"
 }
