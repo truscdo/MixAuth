@@ -2,6 +2,13 @@ package io.github.truscdo.mixauth;
 
 import at.favre.lib.crypto.bcrypt.BCrypt;
 
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+
 /**
  * BCrypt 密码哈希/校验的单一入口。
  *
@@ -25,6 +32,29 @@ public final class PasswordHasher {
 
     private static final BCrypt.Hasher HASHER = BCrypt.withDefaults();
     private static final BCrypt.Verifyer VERIFIER = BCrypt.verifyer();
+
+    /**
+     * 异步执行器：固定少量线程 + 有界队列。BCrypt（cost=12 约 200–400ms）由命令主线程
+     * 异步提交到此处执行，队列满则拒绝（AbortPolicy），既不让主线程等待，也不无限堆积。
+     */
+    private static final ExecutorService HASH_EXECUTOR = createHashExecutor();
+
+    private static ExecutorService createHashExecutor() {
+        ThreadPoolExecutor executor = new ThreadPoolExecutor(
+                2,
+                4,
+                60L,
+                TimeUnit.SECONDS,
+                new ArrayBlockingQueue<>(256),
+                runnable -> {
+                    Thread thread = new Thread(runnable, "mixauth-bcrypt");
+                    thread.setDaemon(true);
+                    return thread;
+                },
+                new ThreadPoolExecutor.AbortPolicy());
+        executor.allowCoreThreadTimeOut(true);
+        return executor;
+    }
 
     private PasswordHasher() {
     }
@@ -61,6 +91,29 @@ public final class PasswordHasher {
         } catch (RuntimeException runtimeException) {
             // 哈希格式损坏/非法：fail-closed，视为不匹配
             return false;
+        }
+    }
+
+    /**
+     * 异步生成 BCrypt 哈希（提交到有界执行器，主线程不参与计算）。
+     * 执行器饱和（AbortPolicy 拒绝）时返回失败的 future，由调用方给出可读错误。
+     */
+    public static CompletableFuture<String> hashAsync(String password, int cost) {
+        try {
+            return CompletableFuture.supplyAsync(() -> hash(password, cost), HASH_EXECUTOR);
+        } catch (RejectedExecutionException rejectedExecutionException) {
+            return CompletableFuture.failedFuture(rejectedExecutionException);
+        }
+    }
+
+    /**
+     * 异步校验密码（提交到有界执行器）。语义与 {@link #verify(String, String)} 一致。
+     */
+    public static CompletableFuture<Boolean> verifyAsync(String password, String passwordHash) {
+        try {
+            return CompletableFuture.supplyAsync(() -> verify(password, passwordHash), HASH_EXECUTOR);
+        } catch (RejectedExecutionException rejectedExecutionException) {
+            return CompletableFuture.failedFuture(rejectedExecutionException);
         }
     }
 }

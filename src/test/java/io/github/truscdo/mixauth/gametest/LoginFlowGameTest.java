@@ -45,11 +45,16 @@ public class LoginFlowGameTest extends AuthGameTestBase {
         GameTestPlayer player = joinRegisteredPending(helper, "LoginOk", uuid, LOGIN_IP);
         helper.assertPendingStage(player, OfflineAuthSessionService.OfflineAuthStage.LOGIN);
         helper.runCommand(player, "/login pw123456");
-        helper.assertNoPending(player);
-        helper.assertTrue(OfflineAuthService.canBypassOfflineLogin(uuid, LOGIN_IP),
-                "expected trusted login window recorded for the login IP");
-        helper.assertLastMessage(player, "auth.message.login_success");
-        helper.succeed();
+        // BCrypt 校验为异步：等待完成后断言状态与消息。
+        helper.startSequence()
+                .thenExecuteAfter(20, () -> {
+                    helper.assertNoPending(player);
+                    helper.assertTrue(OfflineAuthService.canBypassOfflineLogin(uuid, LOGIN_IP),
+                            "expected trusted login window recorded for the login IP");
+                    // 等待期间并行测试的进服/离开广播可能混入，故断言「存在」而非「最后一条」。
+                    helper.assertAnyMessage(player, "auth.message.login_success");
+                })
+                .thenSucceed();
     }
 
     @GameTest
@@ -60,10 +65,13 @@ public class LoginFlowGameTest extends AuthGameTestBase {
         GameTestPlayer player = joinRegisteredPending(helper, "LoginWrong", uuid, WRONG_IP);
         helper.assertPendingStage(player, OfflineAuthSessionService.OfflineAuthStage.LOGIN);
         helper.runCommand(player, "/login wrongpassword");
-        helper.assertPendingStage(player, OfflineAuthSessionService.OfflineAuthStage.LOGIN);
-        int remaining = AuthServerConfig.maxLoginAttempts() - 1;
-        helper.assertAnyMessage(player, "auth.error.password_incorrect_remaining", remaining);
-        helper.succeed();
+        helper.startSequence()
+                .thenExecuteAfter(20, () -> {
+                    helper.assertPendingStage(player, OfflineAuthSessionService.OfflineAuthStage.LOGIN);
+                    int remaining = AuthServerConfig.maxLoginAttempts() - 1;
+                    helper.assertAnyMessage(player, "auth.error.password_incorrect_remaining", remaining);
+                })
+                .thenSucceed();
     }
 
     @GameTest
@@ -77,11 +85,15 @@ public class LoginFlowGameTest extends AuthGameTestBase {
         for (int i = 0; i < max; i++) {
             helper.runCommand(player, "/login wrongpassword");
         }
-        helper.assertTrue(OfflineAuthService.getOfflineLoginBlockRemainingMillis(uuid) > 0,
-                "expected temporary login block recorded");
-        helper.assertTrue(!player.connection.getConnection().isConnected(),
-                "expected player to be disconnected");
-        helper.assertNoPending(player);
-        helper.succeed();
+        // 各次失败校验均为异步：等待所有完成（封禁落库 + 断开）后再断言。
+        helper.startSequence()
+                .thenExecuteAfter(20, () -> {
+                    helper.assertTrue(OfflineAuthService.getOfflineLoginBlockRemainingMillis(uuid) > 0,
+                            "expected temporary login block recorded");
+                    helper.assertTrue(!player.connection.getConnection().isConnected(),
+                            "expected player to be disconnected");
+                    helper.assertNoPending(player);
+                })
+                .thenSucceed();
     }
 }

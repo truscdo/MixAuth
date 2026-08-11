@@ -20,6 +20,7 @@
     "auth.command.online_remove.not_listed": "\u00a77%s \u00a77n\u00e3o est\u00e1 na lista premium.",
     "auth.command.online_remove.failure": "\u00a7cFalha ao remover da lista premium: \u00a7f%s",
     "auth.command.failure.internal": "\u00a7cErro interno do servidor; verifique os logs do servidor",
+    "auth.error.server_busy": "\u00a7cO servidor est\u00e1 ocupado. Tente novamente mais tarde.",
     "auth.error.missing_username": "\u00a7cO nome de usu\u00e1rio \u00e9 obrigat\u00f3rio.",
     "auth.command.mode.player_not_found": "\u00a77Jogador '\u00a7f%s\u00a77' n\u00e3o encontrado.",
     "auth.command.mode.duplicate_username": "\u00a77M\u00faltiplos jogadores encontrados para o nome '\u00a7f%s\u00a77'. Use o UUID para especificar:",

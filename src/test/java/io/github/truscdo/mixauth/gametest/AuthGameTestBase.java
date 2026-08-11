@@ -187,6 +187,17 @@ public class AuthGameTestBase extends ExtendedGameTestHelper {
         getLevel().getServer().getCommands().performPrefixedCommand(player.createCommandSourceStack(), command);
     }
 
+    /**
+     * 以服务器控制台身份（权限 4）执行管理员子命令（setpassword/setmode/remove 等）。
+     * <p>
+     * GameTest 玩家不是服务器 OP，无法通过 {@code hasPermission(3)} 校验，故管理员子命令
+     * 用控制台 source 驱动（成功/失败消息发往服务器日志，测试侧只断言落库结果）。
+     */
+    protected void runCommandAsConsole(String command) {
+        getLevel().getServer().getCommands().performPrefixedCommand(
+                getLevel().getServer().createCommandSourceStack(), command);
+    }
+
     /** 直接落库：注册离线密码。 */
     protected void registerPassword(UUID uuid, String password) {
         OfflineAuthService.registerOfflineUser(uuid, password);

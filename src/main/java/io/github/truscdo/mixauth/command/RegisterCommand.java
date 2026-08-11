@@ -56,8 +56,28 @@ public final class RegisterCommand {
             return 0;
         }
 
+        // BCrypt 哈希移到后台有界执行器：主线程只提交任务，落库与状态变更回主线程执行。
+        OfflineAuthService.hashOfflinePasswordAsync(password)
+                .whenComplete((hash, throwable) -> CommandSupport.executeOnServerThread(source,
+                        () -> completeRegister(source, player, playerUuid, pendingOfflineAuth, hash, throwable)));
+        return Command.SINGLE_SUCCESS;
+    }
+
+    /**
+     * 注册结果回主线程处理（异步哈希完成后由 server.execute 调度到主线程）。
+     * 异步期间玩家可能已登出/状态已变，先校验 pending 仍是同一实例。
+     */
+    private static void completeRegister(CommandSourceStack source, ServerPlayer player, UUID playerUuid,
+            OfflineAuthSessionService.PendingOfflineAuth pendingOfflineAuth, String hash, Throwable throwable) {
+        if (pendingOfflineAuth != null && OfflineAuthSessionService.getPendingAuth(player) != pendingOfflineAuth) {
+            return;
+        }
+        if (throwable != null) {
+            source.sendFailure(AuthTranslations.componentForSource(source, "auth.error.server_busy"));
+            return;
+        }
         try {
-            OfflineAuthService.registerOfflineUser(playerUuid, password);
+            OfflineAuthService.insertOfflinePasswordHash(playerUuid, hash);
             if (pendingOfflineAuth != null) {
                 OfflineAuthService.recordTrustedOfflineLogin(playerUuid, CommandSupport.resolveRemoteIp(player));
                 OfflineAuthSessionService.completeAuthentication(player, "auth.message.register_success_auto_login");
@@ -66,13 +86,11 @@ public final class RegisterCommand {
                         () -> AuthTranslations.componentForSource(source, "auth.command.password_create.success"),
                         false);
             }
-            return Command.SINGLE_SUCCESS;
         } catch (RuntimeException runtimeException) {
             source.sendFailure(AuthTranslations.componentForSource(
                     source,
                     "auth.command.password_create.failure",
                     CommandSupport.describeCommandFailure(source, "creating an offline password", runtimeException)));
-            return 0;
         }
     }
 }

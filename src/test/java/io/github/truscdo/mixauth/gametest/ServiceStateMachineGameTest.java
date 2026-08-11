@@ -40,9 +40,13 @@ public class ServiceStateMachineGameTest extends AuthGameTestBase {
                 SM_REGISTER_IP);
         helper.assertPendingStage(player, OfflineAuthSessionService.OfflineAuthStage.REGISTER);
         helper.runCommand(player, "/register pw123456 pw123456");
-        helper.assertNoPending(player);
-        helper.assertTrue(OfflineAuthService.isOfflineRegistered(uuid), "expected offline password registered");
-        helper.succeed();
+        helper.startSequence()
+                .thenExecuteAfter(20, () -> {
+                    helper.assertNoPending(player);
+                    helper.assertTrue(OfflineAuthService.isOfflineRegistered(uuid),
+                            "expected offline password registered");
+                })
+                .thenSucceed();
     }
 
     @GameTest
@@ -55,10 +59,13 @@ public class ServiceStateMachineGameTest extends AuthGameTestBase {
         GameTestPlayer player = helper.joinServer("SmLogin", uuid, OnlineAuthService.LoginMode.OFFLINE, SM_LOGIN_IP);
         helper.assertPendingStage(player, OfflineAuthSessionService.OfflineAuthStage.LOGIN);
         helper.runCommand(player, "/login pw123456");
-        helper.assertNoPending(player);
-        helper.assertTrue(OfflineAuthService.canBypassOfflineLogin(uuid, SM_LOGIN_IP),
-                "expected trust window recorded after login");
-        helper.succeed();
+        helper.startSequence()
+                .thenExecuteAfter(20, () -> {
+                    helper.assertNoPending(player);
+                    helper.assertTrue(OfflineAuthService.canBypassOfflineLogin(uuid, SM_LOGIN_IP),
+                            "expected trust window recorded after login");
+                })
+                .thenSucceed();
     }
 
     @GameTest
@@ -75,10 +82,13 @@ public class ServiceStateMachineGameTest extends AuthGameTestBase {
         for (int i = 0; i < max; i++) {
             helper.runCommand(player, "/login wrongpassword");
         }
-        helper.assertTrue(OfflineAuthService.getOfflineLoginBlockRemainingMillis(uuid) > 0,
-                "expected temporary block remaining");
-        helper.assertTrue(!player.connection.getConnection().isConnected(),
-                "expected player to be disconnected");
-        helper.succeed();
+        helper.startSequence()
+                .thenExecuteAfter(20, () -> {
+                    helper.assertTrue(OfflineAuthService.getOfflineLoginBlockRemainingMillis(uuid) > 0,
+                            "expected temporary block remaining");
+                    helper.assertTrue(!player.connection.getConnection().isConnected(),
+                            "expected player to be disconnected");
+                })
+                .thenSucceed();
     }
 }

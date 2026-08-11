@@ -53,12 +53,32 @@ public final class LoginCommand {
             return 0;
         }
 
+        // BCrypt 校验移到后台有界执行器：主线程只提交任务，结果回到主线程再改状态。
         UUID playerUuid = player.getGameProfile().getId();
-        if (OfflineAuthService.verifyOfflinePassword(playerUuid, password)) {
+        OfflineAuthService.verifyOfflinePasswordAsync(playerUuid, password)
+                .whenComplete((verified, throwable) -> CommandSupport.executeOnServerThread(source,
+                        () -> completeLogin(source, player, playerUuid, pendingOfflineAuth, verified, throwable)));
+        return Command.SINGLE_SUCCESS;
+    }
+
+    /**
+     * 登录结果回主线程处理（异步校验完成后由 server.execute 调度到主线程）。
+     * 异步期间玩家可能已登出/已认证，先校验 pending 仍是同一实例，避免操作已失效状态。
+     */
+    private static void completeLogin(CommandSourceStack source, ServerPlayer player, UUID playerUuid,
+            OfflineAuthSessionService.PendingOfflineAuth pendingOfflineAuth, Boolean verified, Throwable throwable) {
+        if (OfflineAuthSessionService.getPendingAuth(player) != pendingOfflineAuth) {
+            return;
+        }
+        if (throwable != null) {
+            source.sendFailure(AuthTranslations.componentForSource(source, "auth.error.server_busy"));
+            return;
+        }
+        if (Boolean.TRUE.equals(verified)) {
             OfflineAuthService.clearOfflineLoginBlock(playerUuid);
             OfflineAuthService.recordTrustedOfflineLogin(playerUuid, CommandSupport.resolveRemoteIp(player));
             OfflineAuthSessionService.completeAuthentication(player, "auth.message.login_success");
-            return Command.SINGLE_SUCCESS;
+            return;
         }
 
         int failedAttempts = pendingOfflineAuth.recordFailedLoginAttempt();
@@ -72,7 +92,7 @@ public final class LoginCommand {
                             player,
                             "auth.error.too_many_password_failures_blocked",
                             OfflineAuthService.formatDuration(language, AuthServerConfig.tempBlockMillis())));
-            return 0;
+            return;
         }
 
         int remainingAttempts = AuthServerConfig.maxLoginAttempts() - failedAttempts;
@@ -80,6 +100,5 @@ public final class LoginCommand {
         source.sendFailure(AuthTranslations.componentForSource(source, "auth.error.password_incorrect_remaining",
                 remainingAttempts));
         OfflineAuthSessionService.sendAuthPrompt(player, pendingOfflineAuth.stage());
-        return 0;
     }
 }

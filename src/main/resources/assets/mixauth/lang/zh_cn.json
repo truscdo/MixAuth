@@ -20,6 +20,7 @@
     "auth.command.online_remove.not_listed": "§7%s §7不在正版模式名单中",
     "auth.command.online_remove.failure": "§c移除正版模式名单失败：§f%s",
     "auth.command.failure.internal": "§c服务器内部错误，请查看服务端日志",
+    "auth.error.server_busy": "§c服务器繁忙，请稍后再试",
     "auth.error.missing_username": "§c必须提供用户名",
     "auth.command.mode.player_not_found": "§7未找到玩家「§f%s§7」",
     "auth.command.mode.duplicate_username": "§7用户名「§f%s§7」对应多个玩家，请使用 UUID 指定：",

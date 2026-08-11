@@ -116,8 +116,21 @@ public final class AuthCommands {
             return 0;
         }
 
+        // BCrypt 哈希移到后台有界执行器，落库与清理回主线程执行。
+        OfflineAuthService.hashOfflinePasswordAsync(password)
+                .whenComplete((hash, throwable) -> CommandSupport.executeOnServerThread(source,
+                        () -> completeChangePassword(source, playerUuid, hash, throwable)));
+        return Command.SINGLE_SUCCESS;
+    }
+
+    private static void completeChangePassword(CommandSourceStack source, UUID playerUuid, String hash,
+            Throwable throwable) {
+        if (throwable != null) {
+            source.sendFailure(AuthTranslations.componentForSource(source, "auth.error.server_busy"));
+            return;
+        }
         try {
-            OfflineAuthService.saveOfflinePassword(playerUuid, password);
+            OfflineAuthService.saveOfflinePasswordHash(playerUuid, hash);
             OfflineAuthService.clearTrustedOfflineLogins(playerUuid);
             String language = AuthTranslations.resolveLanguage(source);
             source.sendSuccess(
@@ -126,13 +139,11 @@ public final class AuthCommands {
                             "auth.command.password_change.success",
                             OfflineAuthService.describeTrustedLoginWindow(language)),
                     false);
-            return Command.SINGLE_SUCCESS;
         } catch (RuntimeException runtimeException) {
             source.sendFailure(AuthTranslations.componentForSource(
                     source,
                     "auth.command.password_change.failure",
                     CommandSupport.describeCommandFailure(source, "changing an offline password", runtimeException)));
-            return 0;
         }
     }
 
@@ -154,8 +165,21 @@ public final class AuthCommands {
         }
         final UUID resolvedUuid = playerUuid;
 
+        // BCrypt 哈希移到后台有界执行器，落库与清理回主线程执行。
+        OfflineAuthService.hashOfflinePasswordAsync(password)
+                .whenComplete((hash, throwable) -> CommandSupport.executeOnServerThread(source,
+                        () -> completeSetPassword(source, resolvedUuid, hash, throwable)));
+        return Command.SINGLE_SUCCESS;
+    }
+
+    private static void completeSetPassword(CommandSourceStack source, UUID resolvedUuid, String hash,
+            Throwable throwable) {
+        if (throwable != null) {
+            source.sendFailure(AuthTranslations.componentForSource(source, "auth.error.server_busy"));
+            return;
+        }
         try {
-            OfflineAuthService.saveOfflinePassword(resolvedUuid, password);
+            OfflineAuthService.saveOfflinePasswordHash(resolvedUuid, hash);
             OfflineAuthService.clearTrustedOfflineLogins(resolvedUuid);
             String language = AuthTranslations.resolveLanguage(source);
             source.sendSuccess(
@@ -165,13 +189,11 @@ public final class AuthCommands {
                             resolvedUuid,
                             OfflineAuthService.describeTrustedLoginWindow(language)),
                     true);
-            return Command.SINGLE_SUCCESS;
         } catch (RuntimeException runtimeException) {
             source.sendFailure(AuthTranslations.componentForSource(
                     source,
                     "auth.command.password_set.failure",
                     CommandSupport.describeCommandFailure(source, "setting an offline password", runtimeException)));
-            return 0;
         }
     }
 

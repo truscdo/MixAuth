@@ -39,14 +39,21 @@ public class RegisterFlowGameTest extends AuthGameTestBase {
                 REGISTER_IP);
         helper.assertPendingStage(player, OfflineAuthSessionService.OfflineAuthStage.REGISTER);
         helper.runCommand(player, "/register pw123456 pw123456");
-        helper.assertTrue(OfflineAuthService.isOfflineRegistered(uuid), "expected offline password to be registered");
-        helper.assertNoPending(player);
-        // 隔离解除后恢复为进服时的原游戏模式（gameTestServer 默认为创造模式），即不再处于旁观者。
-        helper.assertTrue(player.gameMode.getGameModeForPlayer() != GameType.SPECTATOR,
-                "expected original game mode restored after login, but still spectator");
-        helper.assertTrue(!player.hasEffect(MobEffects.BLINDNESS), "expected blindness removed after login");
-        helper.assertLastMessage(player, "auth.message.register_success_auto_login");
-        helper.succeed();
+        // BCrypt 哈希为异步：等待完成（落库 + 自动登录）后再断言。
+        helper.startSequence()
+                .thenExecuteAfter(20, () -> {
+                    helper.assertTrue(OfflineAuthService.isOfflineRegistered(uuid),
+                            "expected offline password to be registered");
+                    helper.assertNoPending(player);
+                    // 隔离解除后恢复为进服时的原游戏模式（gameTestServer 默认为创造模式），即不再处于旁观者。
+                    helper.assertTrue(player.gameMode.getGameModeForPlayer() != GameType.SPECTATOR,
+                            "expected original game mode restored after login, but still spectator");
+                    helper.assertTrue(!player.hasEffect(MobEffects.BLINDNESS),
+                            "expected blindness removed after login");
+                    // 等待期间并行测试的进服/离开广播可能混入，故断言「存在」而非「最后一条」。
+                    helper.assertAnyMessage(player, "auth.message.register_success_auto_login");
+                })
+                .thenSucceed();
     }
 
     @GameTest

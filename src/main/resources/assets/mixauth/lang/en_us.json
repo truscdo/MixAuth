@@ -20,6 +20,7 @@
     "auth.command.online_remove.not_listed": "§7%s §7is not in the online list.",
     "auth.command.online_remove.failure": "§cFailed to remove from the online list: §f%s",
     "auth.command.failure.internal": "§cInternal server error; check the server logs",
+    "auth.error.server_busy": "§cThe server is busy. Please try again later.",
     "auth.error.missing_username": "§cUsername is required.",
     "auth.command.mode.player_not_found": "§7Player '§f%s§7' not found.",
     "auth.command.mode.duplicate_username": "§7Multiple players found for username '§f%s§7'. Use UUID to specify:",

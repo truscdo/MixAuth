@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -115,6 +116,23 @@ class PasswordHasherTest {
             assertEquals(72, password.getBytes(StandardCharsets.UTF_8).length);
             String hash = PasswordHasher.hash(password, COST);
             assertTrue(PasswordHasher.verify(password, hash));
+        }
+    }
+
+    @Nested
+    @DisplayName("异步（hashAsync/verifyAsync 走有界执行器）")
+    class Async {
+
+        @Test
+        void asyncHashVerifyRoundTrips() throws Exception {
+            String hash = PasswordHasher.hashAsync("async-password", COST).get(5, TimeUnit.SECONDS);
+            assertTrue(PasswordHasher.verifyAsync("async-password", hash).get(5, TimeUnit.SECONDS));
+        }
+
+        @Test
+        void asyncWrongPasswordRejected() throws Exception {
+            String hash = PasswordHasher.hashAsync("correct", COST).get(5, TimeUnit.SECONDS);
+            assertFalse(PasswordHasher.verifyAsync("wrong", hash).get(5, TimeUnit.SECONDS));
         }
     }
 }

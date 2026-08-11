@@ -6,11 +6,13 @@ import io.github.truscdo.mixauth.PasswordPolicyValidator;
 import io.github.truscdo.mixauth.localization.AuthTranslations;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.network.chat.Component;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import org.slf4j.Logger;
 
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
+import java.util.concurrent.RejectedExecutionException;
 
 /**
  * 各命令执行器共享的辅助方法。
@@ -34,6 +36,24 @@ public final class CommandSupport {
 
     public static void disconnectPlayer(ServerPlayer player, Component reason) {
         player.connection.disconnect(reason);
+    }
+
+    /**
+     * 在服务器主线程上执行操作（已在主线程则直接执行）。
+     * 用于异步回调安全地触碰 Minecraft API / 发送消息。
+     */
+    public static void executeOnServerThread(CommandSourceStack source, Runnable action) {
+        MinecraftServer server = source.getServer();
+        try {
+            if (server.isSameThread()) {
+                action.run();
+            } else {
+                server.execute(action);
+            }
+        } catch (RejectedExecutionException rejectedExecutionException) {
+            LOGGER.debug("Server executor rejected deferred auth action (server shutting down?)",
+                    rejectedExecutionException);
+        }
     }
 
     /**

@@ -13,6 +13,7 @@ import org.slf4j.Logger;
 
 import java.time.Instant;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 public final class OfflineAuthService {
     private static final Logger LOGGER = LogUtil.getLogger();
@@ -40,6 +41,29 @@ public final class OfflineAuthService {
     public static boolean verifyOfflinePassword(UUID playerUuid, String password) {
         String passwordHash = OfflineUserDao.findOfflinePasswordHash(playerUuid);
         return PasswordHasher.verify(password, passwordHash);
+    }
+
+    /**
+     * 异步校验离线密码：主线程仅做一次轻量哈希读取，BCrypt 计算提交到后台有界执行器。
+     */
+    public static CompletableFuture<Boolean> verifyOfflinePasswordAsync(UUID playerUuid, String password) {
+        String passwordHash = OfflineUserDao.findOfflinePasswordHash(playerUuid);
+        return PasswordHasher.verifyAsync(password, passwordHash);
+    }
+
+    /** 异步计算 BCrypt 哈希（cost 取自配置），供命令层在后台完成哈希后回主线程落库。 */
+    public static CompletableFuture<String> hashOfflinePasswordAsync(String password) {
+        return PasswordHasher.hashAsync(password, AuthServerConfig.bcryptCost());
+    }
+
+    /** 使用已算好的哈希直接落库（异步注册的完成阶段，主线程调用）。 */
+    public static boolean insertOfflinePasswordHash(UUID playerUuid, String passwordHash) {
+        return OfflineUserDao.insertOfflineUser(playerUuid, passwordHash);
+    }
+
+    /** 使用已算好的哈希直接保存（异步改密/设密的完成阶段，主线程调用）。 */
+    public static void saveOfflinePasswordHash(UUID playerUuid, String passwordHash) {
+        OfflineUserDao.saveOfflinePassword(playerUuid, passwordHash);
     }
 
     public static void blockOfflineLogin(UUID playerUuid, long durationMillis) {

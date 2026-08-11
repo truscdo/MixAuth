@@ -39,17 +39,22 @@ public class TrustedLoginGameTest extends AuthGameTestBase {
         GameTestPlayer first = helper.joinServer("TrustRejoin", uuid, OnlineAuthService.LoginMode.OFFLINE, TRUST_IP);
         helper.assertPendingStage(first, OfflineAuthSessionService.OfflineAuthStage.LOGIN);
         helper.runCommand(first, "/login pw123456");
-        helper.assertNoPending(first);
-        helper.assertTrue(OfflineAuthService.canBypassOfflineLogin(uuid, TRUST_IP),
-                "expected trust window recorded after successful login");
+        // 第一次登录为异步 BCrypt：等待完成（信任窗口落库）后再进行第二次进服，否则会误走密码登录。
+        helper.startSequence()
+                .thenExecuteAfter(20, () -> {
+                    helper.assertNoPending(first);
+                    helper.assertTrue(OfflineAuthService.canBypassOfflineLogin(uuid, TRUST_IP),
+                            "expected trust window recorded after successful login");
 
-        // 第二次进服：同 UUID（不同用户名）+ 同 IP → 免密直进，无待认证状态。
-        GameTestPlayer second = helper.joinServer("TrustRejoinAgain", uuid, OnlineAuthService.LoginMode.OFFLINE,
-                TRUST_IP);
-        helper.assertNoPending(second);
-        helper.assertLastMessage(second, "auth.message.trusted_login_bypass",
-                OfflineAuthService.describeTrustedLoginWindow());
-        helper.succeed();
+                    // 第二次进服：同 UUID（不同用户名）+ 同 IP → 免密直进，无待认证状态。
+                    GameTestPlayer second = helper.joinServer("TrustRejoinAgain", uuid,
+                            OnlineAuthService.LoginMode.OFFLINE, TRUST_IP);
+                    helper.assertNoPending(second);
+                    // 并行测试的进服/离开广播可能混入，故断言「存在」而非「最后一条」。
+                    helper.assertAnyMessage(second, "auth.message.trusted_login_bypass",
+                            OfflineAuthService.describeTrustedLoginWindow());
+                })
+                .thenSucceed();
     }
 
     /**
