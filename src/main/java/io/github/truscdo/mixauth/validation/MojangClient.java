@@ -14,12 +14,27 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 
 /**
  * Mojang API 网络层。共享单个 {@link HttpClient} 以复用 TCP/TLS 连接，
  * 提供正版 profile 预检查与 hasJoined 会话校验。
+ *
+ * <p>
+ * 所有阻塞 HTTP 均在本类内置的<b>专用有界执行器</b>上运行，绝不提交到
+ * {@code ForkJoinPool.commonPool()}——否则阻塞式 {@code HttpClient.send}
+ * 会占满共享池、饿死所有依赖 commonPool 的组件（参考 vanilla：每次 hasJoined
+ * 独立新建 "User Authenticator" 守护线程。
+ *
+ * <p>
+ * 依据 Mojang 官方限流（per-IP 200 请求/2 分钟；profile 端点约 400 请求/10 秒），
+ * 合法并发需求很低，小核心数 + 有界队列 + AbortPolicy 已足够；队列满时 fail-fast。
  */
 public final class MojangClient {
     private static final Logger LOGGER = LogUtil.getLogger();
@@ -31,11 +46,58 @@ public final class MojangClient {
             .connectTimeout(AuthServerConfig.mojangConnectTimeout())
             .build();
 
+    /**
+     * Mojang HTTP 专用有界执行器：仿 {@code HELLO_EXECUTOR} 的健壮模式。
+     * 固定少量线程 + 有界队列，队列满时 {@link AbortPolicy} 立即拒绝（fail-fast），
+     * 洪水只影响本执行器排队，不扩散到 commonPool 或主线程。
+     */
+    private static final ExecutorService HTTP_EXECUTOR = createHttpExecutor();
+
+    private static ExecutorService createHttpExecutor() {
+        ThreadPoolExecutor executor = new ThreadPoolExecutor(
+                1,
+                4,
+                60L,
+                TimeUnit.SECONDS,
+                new ArrayBlockingQueue<>(256),
+                runnable -> {
+                    Thread thread = new Thread(runnable, "mixauth-mojang-http");
+                    thread.setDaemon(true);
+                    return thread;
+                },
+                new ThreadPoolExecutor.AbortPolicy());
+        executor.allowCoreThreadTimeOut(true);
+        return executor;
+    }
+
     private MojangClient() {
     }
 
     public static CompletableFuture<HasJoinedResult> requestHasJoined(String username, String serverHash) {
-        return CompletableFuture.supplyAsync(() -> doRequestHasJoined(username, serverHash));
+        try {
+            return CompletableFuture.supplyAsync(() -> doRequestHasJoined(username, serverHash), HTTP_EXECUTOR);
+        } catch (RejectedExecutionException rejectedExecutionException) {
+            LOGGER.warn("Mojang HTTP executor saturated; rejecting hasJoined for {}", username);
+            return CompletableFuture.failedFuture(rejectedExecutionException);
+        }
+    }
+
+    /**
+     * 在专用有界执行器上异步执行 Mojang profile 预检查。
+     * 队列满时立即以失败 future 返回（fail-fast），调用方应据此断开客户端。
+     *
+     * @param username           待检查的玩家名
+     * @param requestedProfileId 客户端声称的 profile UUID
+     * @return 预检查结果；队列饱和时为异常完成
+     */
+    public static CompletableFuture<PreLoginCheckResult> asyncPreLoginCheck(String username, UUID requestedProfileId) {
+        try {
+            return CompletableFuture.supplyAsync(
+                    () -> syncPreLoginCheck(username, requestedProfileId), HTTP_EXECUTOR);
+        } catch (RejectedExecutionException rejectedExecutionException) {
+            LOGGER.warn("Mojang HTTP executor saturated; rejecting pre-login check for {}", username);
+            return CompletableFuture.failedFuture(rejectedExecutionException);
+        }
     }
 
     public static PreLoginCheckResult syncPreLoginCheck(String username, UUID requestedProfileId) {

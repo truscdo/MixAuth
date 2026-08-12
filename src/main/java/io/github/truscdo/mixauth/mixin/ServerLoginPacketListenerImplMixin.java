@@ -35,7 +35,6 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.RejectedExecutionException;
 
@@ -116,31 +115,39 @@ abstract class ServerLoginPacketListenerImplMixin {
             return;
         }
 
-        // 3. 未知玩家，执行预检查
-        CompletableFuture.runAsync(() -> {
-            var result = MojangClient.syncPreLoginCheck(
-                    packet.name(), packet.profileId());
-
-            this.server.execute(() -> {
-                if (auth$disconnected) {
-                    AUTH_LOGGER.debug("auth precheck result ignored — client already disconnected");
-                    return;
-                }
-
-                switch (result) {
-                    case PreLoginCheckResult.Online r -> auth$beginOnlineHandshake(packet);
-                    case PreLoginCheckResult.Offline r -> {
-                        AUTH_LOGGER.info("auth precheck routing {} to offline login", r.username());
-                        auth$finishOfflineOrReject(r.username());
+        // 3. 未知玩家，执行预检查（MojangClient 专用有界执行器，队列满立即失败断开）
+        MojangClient.asyncPreLoginCheck(packet.name(), packet.profileId())
+                .whenComplete((result, throwable) -> this.server.execute(() -> {
+                    if (throwable != null) {
+                        AUTH_LOGGER.warn("auth precheck rejected for {}: {}",
+                                packet.name(), throwable.toString());
+                        if (!auth$disconnected) {
+                            auth$disconnectBeforeHandshake(
+                                    packet.name(),
+                                    packet.profileId(),
+                                    AuthLocalizedText.of("auth.validation.reason.mojang_api_unavailable"));
+                        }
+                        return;
                     }
-                    case PreLoginCheckResult.Disconnect r -> {
-                        AUTH_LOGGER.warn("auth precheck disconnect for {}: {}", r.username(), r.reason());
-                        auth$disconnectBeforeHandshake(
-                                r.username(), r.requestedProfileId(), r.reason());
+
+                    if (auth$disconnected) {
+                        AUTH_LOGGER.debug("auth precheck result ignored — client already disconnected");
+                        return;
                     }
-                }
-            });
-        });
+
+                    switch (result) {
+                        case PreLoginCheckResult.Online r -> auth$beginOnlineHandshake(packet);
+                        case PreLoginCheckResult.Offline r -> {
+                            AUTH_LOGGER.info("auth precheck routing {} to offline login", r.username());
+                            auth$finishOfflineOrReject(r.username());
+                        }
+                        case PreLoginCheckResult.Disconnect r -> {
+                            AUTH_LOGGER.warn("auth precheck disconnect for {}: {}", r.username(), r.reason());
+                            auth$disconnectBeforeHandshake(
+                                    r.username(), r.requestedProfileId(), r.reason());
+                        }
+                    }
+                }));
     }
 
     @Inject(method = "handleKey", at = @At("HEAD"), cancellable = true)
