@@ -75,7 +75,6 @@ public final class LoginCommand {
             return;
         }
         if (Boolean.TRUE.equals(verified)) {
-            OfflineAuthService.clearOfflineLoginBlock(playerUuid);
             OfflineAuthService.recordTrustedOfflineLogin(playerUuid, CommandSupport.resolveRemoteIp(player));
             OfflineAuthSessionService.completeAuthentication(player, "auth.message.login_success");
             return;
