@@ -108,7 +108,8 @@ public final class OfflineAuthSessionService {
     }
 
     public static void onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
-        if (event.getEntity() instanceof ServerPlayer player) {
+        if (event.getEntity() instanceof ServerPlayer player
+                && getPendingAuth(player) != null) {
             clearPendingAuth(player);
         }
     }
