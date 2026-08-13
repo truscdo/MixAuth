@@ -75,17 +75,6 @@ public final class KnownPlayerService {
     }
 
     /**
-     * 从已知名单移除玩家（非关键写，write-behind）。
-     */
-    public static boolean removeKnownPlayer(UUID playerUuid) {
-        if (playerUuid == null) {
-            return false;
-        }
-        AuthStore.removeKnown(playerUuid);
-        return true;
-    }
-
-    /**
      * 彻底移除玩家的所有数据（known/password/block/trusted）。
      * 管理向低频操作：经 AuthStore 复合关键写并等待落库完成，保证命令返回时 DB 已一致。
      */

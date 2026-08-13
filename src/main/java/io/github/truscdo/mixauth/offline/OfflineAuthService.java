@@ -43,10 +43,6 @@ public final class OfflineAuthService {
         return insertOfflinePasswordHash(playerUuid, passwordHash);
     }
 
-    public static void saveOfflinePassword(UUID playerUuid, String password) {
-        saveOfflinePasswordHash(playerUuid, PasswordHasher.hash(password, AuthServerConfig.bcryptCost()));
-    }
-
     public static boolean verifyOfflinePassword(UUID playerUuid, String password) {
         String passwordHash = AuthStore.getPasswordHash(playerUuid);
         return PasswordHasher.verify(password, passwordHash);

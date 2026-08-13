@@ -54,21 +54,6 @@ public final class OfflineTrustedLoginDao {
                 "Failed to clear offline trusted logins");
     }
 
-    /** 删除指定 (uuid, ip) 单条记录（免密窗口惰性过期用）。 */
-    public static void clearOfflineTrustedLogin(UUID playerUuid, String ipAddress) {
-        if (playerUuid == null || ipAddress == null) {
-            return;
-        }
-
-        DatabaseSupport.executeUpdate(
-                "DELETE FROM offline_trusted_logins WHERE player_uuid = ? AND ip_address = ?",
-                stmt -> {
-                    stmt.setString(1, playerUuid.toString());
-                    stmt.setString(2, ipAddress);
-                },
-                "Failed to clear offline trusted login");
-    }
-
     /**
      * 删除所有 {@code authenticated_at} 早于指定时间戳的过期记录（免密窗口已失效的行）。
      *
