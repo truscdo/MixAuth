@@ -4,17 +4,23 @@ import io.github.truscdo.mixauth.AuthServerConfig;
 import io.github.truscdo.mixauth.KnownPlayerService;
 import io.github.truscdo.mixauth.LogUtil;
 import io.github.truscdo.mixauth.PasswordHasher;
-import io.github.truscdo.mixauth.db.OfflineLoginBlockDao;
-import io.github.truscdo.mixauth.db.OfflineTrustedLoginDao;
-import io.github.truscdo.mixauth.db.OfflineUserDao;
+import io.github.truscdo.mixauth.cache.AuthStore;
 import io.github.truscdo.mixauth.localization.AuthTranslations;
 import io.github.truscdo.mixauth.online.OnlineAuthService;
 import org.slf4j.Logger;
 
 import java.time.Instant;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
+/**
+ * 离线认证服务：业务逻辑（BCrypt、登录流程、封禁策略、trusted 窗口判定、日志）。
+ * <p>
+ * IO 全部经 {@link AuthStore} 门面：读同步自门控；关键写（offline_users 密码哈希）落库
+ * join 后再同步缓存；非关键写（block/trusted）缓存先行 + write-behind。
+ * </p>
+ */
 public final class OfflineAuthService {
     private static final Logger LOGGER = LogUtil.getLogger();
 
@@ -26,28 +32,31 @@ public final class OfflineAuthService {
     }
 
     public static boolean isOfflineRegistered(UUID playerUuid) {
-        return OfflineUserDao.isOfflineRegistered(playerUuid);
+        if (playerUuid == null) {
+            return false;
+        }
+        return AuthStore.getPasswordHash(playerUuid) != null;
     }
 
     public static boolean registerOfflineUser(UUID playerUuid, String password) {
         String passwordHash = PasswordHasher.hash(password, AuthServerConfig.bcryptCost());
-        return OfflineUserDao.insertOfflineUser(playerUuid, passwordHash);
+        return insertOfflinePasswordHash(playerUuid, passwordHash);
     }
 
     public static void saveOfflinePassword(UUID playerUuid, String password) {
-        OfflineUserDao.saveOfflinePassword(playerUuid, PasswordHasher.hash(password, AuthServerConfig.bcryptCost()));
+        saveOfflinePasswordHash(playerUuid, PasswordHasher.hash(password, AuthServerConfig.bcryptCost()));
     }
 
     public static boolean verifyOfflinePassword(UUID playerUuid, String password) {
-        String passwordHash = OfflineUserDao.findOfflinePasswordHash(playerUuid);
+        String passwordHash = AuthStore.getPasswordHash(playerUuid);
         return PasswordHasher.verify(password, passwordHash);
     }
 
     /**
-     * 异步校验离线密码：主线程仅做一次轻量哈希读取，BCrypt 计算提交到后台有界执行器。
+     * 异步校验离线密码：主线程仅做一次轻量缓存读，BCrypt 计算提交到后台有界执行器。
      */
     public static CompletableFuture<Boolean> verifyOfflinePasswordAsync(UUID playerUuid, String password) {
-        String passwordHash = OfflineUserDao.findOfflinePasswordHash(playerUuid);
+        String passwordHash = AuthStore.getPasswordHash(playerUuid);
         return PasswordHasher.verifyAsync(password, passwordHash);
     }
 
@@ -56,24 +65,34 @@ public final class OfflineAuthService {
         return PasswordHasher.hashAsync(password, AuthServerConfig.bcryptCost());
     }
 
-    /** 使用已算好的哈希直接落库（异步注册的完成阶段，主线程调用）。 */
+    /**
+     * 关键写（offline_users）：INSERT 语义（已存在返回 false 不覆盖），经 AuthStore
+     * 落库 join 后再同步缓存（write-through + CHECKPOINT SYNC）。
+     */
     public static boolean insertOfflinePasswordHash(UUID playerUuid, String passwordHash) {
-        return OfflineUserDao.insertOfflineUser(playerUuid, passwordHash);
+        return AuthStore.insertPassword(playerUuid, passwordHash).join();
     }
 
-    /** 使用已算好的哈希直接保存（异步改密/设密的完成阶段，主线程调用）。 */
+    /** 关键写（offline_users）：MERGE 语义，经 AuthStore 落库 join 后再同步缓存。 */
     public static void saveOfflinePasswordHash(UUID playerUuid, String passwordHash) {
-        OfflineUserDao.saveOfflinePassword(playerUuid, passwordHash);
+        AuthStore.savePassword(playerUuid, passwordHash).join();
     }
 
+    /** 非关键写（offline_login_blocks）：缓存先行 + write-behind（经 AuthStore）。 */
     public static void blockOfflineLogin(UUID playerUuid, long durationMillis) {
+        if (playerUuid == null) {
+            return;
+        }
         long blockedUntil = Instant.now().toEpochMilli() + durationMillis;
-        OfflineLoginBlockDao.saveOfflineLoginBlock(playerUuid, blockedUntil);
+        AuthStore.recordBlock(playerUuid, blockedUntil);
     }
 
     public static long getOfflineLoginBlockRemainingMillis(UUID playerUuid) {
-        long blockedUntil = OfflineLoginBlockDao.findOfflineLoginBlockedUntil(playerUuid);
-        if (blockedUntil <= 0L) {
+        if (playerUuid == null) {
+            return 0L;
+        }
+        Long blockedUntil = AuthStore.getBlockedUntil(playerUuid);
+        if (blockedUntil == null) {
             return 0L;
         }
 
@@ -82,35 +101,48 @@ public final class OfflineAuthService {
             return remainingMillis;
         }
 
+        // 惰性过期：清理缓存 + write-behind 写回 DB（行为与现状一致）
         clearOfflineLoginBlock(playerUuid);
         return 0L;
     }
 
+    /** 非关键写（offline_login_blocks）：缓存先行 + write-behind（经 AuthStore）。 */
     public static void clearOfflineLoginBlock(UUID playerUuid) {
-        OfflineLoginBlockDao.clearOfflineLoginBlock(playerUuid);
-    }
-
-    public static void recordTrustedOfflineLogin(UUID playerUuid, String ipAddress) {
-        if (ipAddress == null || ipAddress.isBlank()) {
+        if (playerUuid == null) {
             return;
         }
+        AuthStore.clearBlock(playerUuid);
+    }
 
-        OfflineTrustedLoginDao.saveOfflineTrustedLogin(playerUuid, ipAddress, Instant.now().toEpochMilli());
+    /** 非关键写（offline_trusted_logins）：缓存先行 + write-behind（经 AuthStore）。 */
+    public static void recordTrustedOfflineLogin(UUID playerUuid, String ipAddress) {
+        if (playerUuid == null || ipAddress == null || ipAddress.isBlank()) {
+            return;
+        }
+        AuthStore.recordTrusted(playerUuid, ipAddress, Instant.now().toEpochMilli());
     }
 
     public static boolean canBypassOfflineLogin(UUID playerUuid, String ipAddress) {
-        if (ipAddress == null || ipAddress.isBlank()) {
+        if (playerUuid == null || ipAddress == null || ipAddress.isBlank()) {
             return false;
         }
 
-        long validAfter = Instant.now().toEpochMilli() - AuthServerConfig.trustedLoginWindowMillis();
-        // 每次窗口检查顺带清理已过期的免密记录，避免 offline_trusted_logins 表无限增长
-        OfflineTrustedLoginDao.deleteExpiredOfflineTrustedLogins(validAfter);
-        if (!OfflineTrustedLoginDao.hasRecentOfflineTrustedLogin(playerUuid, ipAddress, validAfter)) {
+        long now = Instant.now().toEpochMilli();
+        long validAfter = now - AuthServerConfig.trustedLoginWindowMillis();
+
+        // 何时触发=业务（每次窗口检查），是否执行=AuthStore 节流
+        AuthStore.sweepExpiredTrusted(validAfter);
+
+        Long authenticatedAt = AuthStore.getTrustedAt(playerUuid, ipAddress);
+        if (authenticatedAt == null) {
+            return false;
+        }
+        if (authenticatedAt < validAfter) {
+            // 过期不授信；清理交给 AuthStore 节流范围删除，不做单条惰性删
             return false;
         }
 
-        if (OfflineTrustedLoginDao.hasSharedRecentOfflineTrustedIp(ipAddress, validAfter)) {
+        if (hasSharedRecentOfflineTrustedIp(ipAddress, validAfter)) {
             LOGGER.info(
                     "Skipped offline passwordless login for {} because IP {} matched multiple UUIDs within {}",
                     playerUuid,
@@ -122,8 +154,30 @@ public final class OfflineAuthService {
         return true;
     }
 
+    private static boolean hasSharedRecentOfflineTrustedIp(String ipAddress, long validAfter) {
+        Set<UUID> uuids = AuthStore.getTrustedUuidsByIp(ipAddress);
+        if (uuids == null || uuids.isEmpty()) {
+            return false;
+        }
+        int recent = 0;
+        for (UUID uuid : uuids) {
+            Long authenticatedAt = AuthStore.getTrustedAt(uuid, ipAddress);
+            if (authenticatedAt != null && authenticatedAt >= validAfter) {
+                recent++;
+                if (recent > 1) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /** 关键写（offline_trusted_logins）：改密/设密后清空该玩家的全部免密记录（落库 join）。 */
     public static void clearTrustedOfflineLogins(UUID playerUuid) {
-        OfflineTrustedLoginDao.clearOfflineTrustedLogins(playerUuid);
+        if (playerUuid == null) {
+            return;
+        }
+        AuthStore.clearTrustedByUuidCritical(playerUuid).join();
     }
 
     public static String describeTrustedLoginWindow(String language) {

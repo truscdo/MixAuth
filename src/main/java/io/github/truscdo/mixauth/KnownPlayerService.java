@@ -1,17 +1,22 @@
 package io.github.truscdo.mixauth;
 
+import io.github.truscdo.mixauth.cache.AuthStore;
 import io.github.truscdo.mixauth.db.KnownPlayerDao;
-import io.github.truscdo.mixauth.db.OfflineLoginBlockDao;
-import io.github.truscdo.mixauth.db.OfflineTrustedLoginDao;
-import io.github.truscdo.mixauth.db.OfflineUserDao;
 import io.github.truscdo.mixauth.online.OnlineAuthService;
 import net.minecraft.core.UUIDUtil;
 import org.slf4j.Logger;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * 已知玩家名单服务：业务逻辑（登录模式解析、LOGIN_MODES、管理流程）。
+ * <p>
+ * IO 全部经 {@link AuthStore} 门面：读同步自门控；非关键写缓存先行 + write-behind。
+ * </p>
+ */
 public final class KnownPlayerService {
     private static final Logger LOGGER = LogUtil.getLogger();
     private static final Map<UUID, OnlineAuthService.LoginMode> LOGIN_MODES = new ConcurrentHashMap<>();
@@ -21,7 +26,8 @@ public final class KnownPlayerService {
 
     /**
      * 查询已知玩家名单中的登录模式。
-     * 先查 clientUuid，未命中则查 server-generated UUID（基于用户名）。
+     * 先查 clientUuid，未命中则查 server-generated UUID（基于用户名）；两次查找命中同一份
+     * 缓存（AuthStore 内部 byUuid），无需两份缓存。
      *
      * @param clientUuid 客户端在 Login Start 中发送的 UUID
      * @param username   玩家用户名
@@ -32,20 +38,18 @@ public final class KnownPlayerService {
             return null;
         }
 
-        // 先尝试 clientUuid
         if (clientUuid != null) {
-            String mode = KnownPlayerDao.findLoginMode(clientUuid);
+            OnlineAuthService.LoginMode mode = AuthStore.getLoginMode(clientUuid);
             if (mode != null) {
-                return parseLoginMode(mode);
+                return mode;
             }
         }
 
-        // 再尝试 server-generated UUID
         UUID serverUuid = UUIDUtil.createOfflineProfile(username).getId();
         if (!serverUuid.equals(clientUuid)) {
-            String mode = KnownPlayerDao.findLoginMode(serverUuid);
+            OnlineAuthService.LoginMode mode = AuthStore.getLoginMode(serverUuid);
             if (mode != null) {
-                return parseLoginMode(mode);
+                return mode;
             }
         }
 
@@ -53,55 +57,43 @@ public final class KnownPlayerService {
     }
 
     /**
-     * 记录玩家登录模式到已知名单和内存映射。
+     * 记录玩家登录模式（非关键写，write-behind，缓存先行；减写收进 AuthStore）。
      */
     public static void recordKnownPlayer(UUID playerUuid, String username, OnlineAuthService.LoginMode mode) {
-        if (playerUuid == null || mode == null) {
-            return;
-        }
-
-        KnownPlayerDao.saveKnownPlayer(playerUuid, username, mode.name());
-        markLoginMode(playerUuid, mode);
+        AuthStore.recordKnown(playerUuid, username, mode);
     }
 
     /**
-     * 管理员设置玩家登录模式。
+     * 管理员设置玩家登录模式（非关键写，write-behind）。
      */
     public static void setLoginMode(UUID playerUuid, String username, OnlineAuthService.LoginMode mode) {
         if (playerUuid == null || mode == null) {
             return;
         }
-
-        KnownPlayerDao.saveKnownPlayer(playerUuid, username, mode.name());
+        AuthStore.setLoginMode(playerUuid, username, mode);
         LOGGER.info("Admin set login mode for {} ({}) to {}", username, playerUuid, mode);
     }
 
     /**
-     * 从已知名单中移除玩家。
+     * 从已知名单移除玩家（非关键写，write-behind）。
      */
     public static boolean removeKnownPlayer(UUID playerUuid) {
         if (playerUuid == null) {
             return false;
         }
-
-        LOGIN_MODES.remove(playerUuid);
-        return KnownPlayerDao.removeKnownPlayer(playerUuid);
+        AuthStore.removeKnown(playerUuid);
+        return true;
     }
 
     /**
-     * 彻底移除玩家的所有数据（已知名单、离线密码、封禁记录、免密登录记录）。
+     * 彻底移除玩家的所有数据（known/password/block/trusted）。
+     * 管理向低频操作：经 AuthStore 复合关键写并等待落库完成，保证命令返回时 DB 已一致。
      */
     public static boolean removeAllPlayerData(UUID playerUuid) {
         if (playerUuid == null) {
             return false;
         }
-
-        LOGIN_MODES.remove(playerUuid);
-        boolean removedFromKnown = KnownPlayerDao.removeKnownPlayer(playerUuid);
-        OfflineTrustedLoginDao.clearOfflineTrustedLogins(playerUuid);
-        OfflineLoginBlockDao.clearOfflineLoginBlock(playerUuid);
-        OfflineUserDao.deleteOfflineUser(playerUuid);
-        return removedFromKnown;
+        return AuthStore.removePlayer(playerUuid).join();
     }
 
     /**
@@ -122,12 +114,13 @@ public final class KnownPlayerService {
         }
     }
 
-    private static OnlineAuthService.LoginMode parseLoginMode(String mode) {
-        try {
-            return OnlineAuthService.LoginMode.valueOf(mode);
-        } catch (IllegalArgumentException | NullPointerException e) {
-            LOGGER.warn("Unknown login mode in database: {}", mode);
-            return null;
-        }
+    /** 管理命令用户名精确查找：内存索引服务（经 AuthStore，自门控保证索引完整）。 */
+    public static List<KnownPlayerDao.KnownPlayerEntry> findKnownPlayersByUsername(String username) {
+        return AuthStore.findKnownByUsername(username);
+    }
+
+    /** 管理命令前缀补全：内存索引服务（经 AuthStore，自门控保证索引完整）。 */
+    public static List<KnownPlayerDao.KnownPlayerEntry> findKnownPlayersByPrefix(String prefix, int limit) {
+        return AuthStore.findKnownByPrefix(prefix, limit);
     }
 }

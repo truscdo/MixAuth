@@ -26,6 +26,8 @@ public final class DatabaseSupport {
     private static final String H2_USERNAME = "sa";
     private static final String H2_PASSWORD = "";
     private static final String H2_URL_PREFIX = "jdbc:h2:file:";
+    /** 加大 H2 页缓存：启动全量加载与写路径也命中页缓存，成本近零的免费加成。 */
+    private static final String H2_URL_OPTIONS = ";CACHE_SIZE=65536";
     private static final String UNIQUE_VIOLATION_SQL_STATE = "23505";
     private static final int MAX_CONNECTIONS = 16;
 
@@ -157,7 +159,24 @@ public final class DatabaseSupport {
     }
 
     private static String buildDatabaseUrl(Path configuredDatabasePath) {
-        return H2_URL_PREFIX + configuredDatabasePath.toString().replace('\\', '/');
+        return H2_URL_PREFIX + configuredDatabasePath.toString().replace('\\', '/') + H2_URL_OPTIONS;
+    }
+
+    /**
+     * 执行 {@code CHECKPOINT SYNC}：把已提交事务强制刷盘（fsync）。
+     * <p>
+     * 供关键写（密码注册/改密/设密）在落库后调用，将密码持久性从 H2 默认
+     * {@code WRITE_DELAY} 的约 1s 窗口提升到 0（崩溃/断电 0 丢失）。
+     * </p>
+     */
+    public static void checkpointSync() {
+        ensureDatabase();
+        try (Connection connection = openConnection();
+                Statement statement = connection.createStatement()) {
+            statement.execute("CHECKPOINT SYNC");
+        } catch (SQLException sqlException) {
+            throw new IllegalStateException("Failed to checkpoint auth database", sqlException);
+        }
     }
 
     @FunctionalInterface

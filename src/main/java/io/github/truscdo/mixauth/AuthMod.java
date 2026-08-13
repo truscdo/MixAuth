@@ -1,5 +1,6 @@
 package io.github.truscdo.mixauth;
 
+import io.github.truscdo.mixauth.cache.AuthStore;
 import io.github.truscdo.mixauth.db.DatabaseSupport;
 import io.github.truscdo.mixauth.offline.OfflineAuthSessionService;
 import net.neoforged.fml.ModContainer;
@@ -29,8 +30,23 @@ public final class AuthMod {
         bus.addListener((ServerAboutToStartEvent event) -> {
             PasswordBlacklistLoader.init();
             warnIfOnlineMode(event.getServer());
+            MinecraftServer server = event.getServer();
+            // 启动时经单 worker 直接读异步全量加载四表到内存缓存；加载门控在 AuthStore 内自处理。
+            // 加载失败 = 认证服务完全不可用，停机（fail-closed）。
+            AuthStore.loadAllAsync().whenComplete((unused, throwable) -> {
+                if (throwable != null) {
+                    LOGGER.error("Auth cache failed to load; auth service is unusable, halting server", throwable);
+                    server.halt(false);
+                } else {
+                    LOGGER.info("Auth cache fully loaded from database");
+                }
+            });
         });
-        bus.addListener((ServerStoppingEvent event) -> DatabaseSupport.dispose());
+        bus.addListener((ServerStoppingEvent event) -> {
+            // 关服排空 write-behind 队列后再释放连接池
+            AuthStore.drainAndShutdown();
+            DatabaseSupport.dispose();
+        });
     }
 
     /** MixAuth 仅支持离线模式服务器；正版模式下手握拦截完全失效，打印警告提醒管理员。 */

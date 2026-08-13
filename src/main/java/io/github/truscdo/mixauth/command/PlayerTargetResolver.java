@@ -1,5 +1,6 @@
 package io.github.truscdo.mixauth.command;
 
+import io.github.truscdo.mixauth.KnownPlayerService;
 import io.github.truscdo.mixauth.db.KnownPlayerDao;
 import io.github.truscdo.mixauth.localization.AuthTranslations;
 import net.minecraft.commands.CommandSourceStack;
@@ -35,7 +36,7 @@ public final class PlayerTargetResolver {
             return null;
         }
 
-        List<KnownPlayerDao.KnownPlayerEntry> entries = KnownPlayerDao.findKnownPlayersByUsername(username);
+        List<KnownPlayerDao.KnownPlayerEntry> entries = KnownPlayerService.findKnownPlayersByUsername(username);
         if (entries.isEmpty()) {
             source.sendFailure(
                     AuthTranslations.componentForSource(source, "auth.command.mode.player_not_found", username));

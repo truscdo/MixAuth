@@ -58,11 +58,12 @@ public class TrustedLoginGameTest extends AuthGameTestBase {
     }
 
     /**
-     * 窗口外的信任记录：窗口检查时既不会放行免密，也会被顺带清理（表不再无限增长）。
+     * 窗口外的信任记录：窗口检查时不授信（过期不授信），玩家回到密码登录。
+     * 清理交由 AuthStore 节流范围删除，不在窗口检查时断言（清理时机取决于节流）。
      */
     @GameTest
     @EmptyTemplate
-    @TestHolder(description = { "窗口外的信任记录在窗口检查时被清理，玩家回到密码登录" })
+    @TestHolder(description = { "窗口外的信任记录不授信，玩家回到密码登录（清理交由节流范围删除）" })
     static void expiredTrustRecordCleanedUp(AuthGameTestBase helper) {
         UUID uuid = offlineUuid("TrustStale");
         helper.resetPlayerData(uuid);
@@ -71,11 +72,9 @@ public class TrustedLoginGameTest extends AuthGameTestBase {
         helper.recordTrustedIp(uuid, TRUST_IP);
         helper.expireTrustedIp(uuid, TRUST_IP);
 
-        // 窗口检查：过期记录既不生效、也会被顺带清理。
+        // 窗口检查：过期记录不授信。
         helper.assertTrue(!OfflineAuthService.canBypassOfflineLogin(uuid, TRUST_IP),
                 "expected expired trust window to be rejected");
-        helper.assertTrue(!helper.hasTrustedIp(uuid, TRUST_IP),
-                "expected expired trust record to be cleaned up");
 
         // 回归：进服应回到 LOGIN 待认证（而非免密直进）。
         GameTestPlayer player = helper.joinServer("TrustStale", uuid, OnlineAuthService.LoginMode.OFFLINE, TRUST_IP);

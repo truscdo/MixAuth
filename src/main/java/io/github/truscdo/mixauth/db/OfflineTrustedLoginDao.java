@@ -2,9 +2,10 @@ package io.github.truscdo.mixauth.db;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -14,45 +15,32 @@ public final class OfflineTrustedLoginDao {
     private OfflineTrustedLoginDao() {
     }
 
+    /** offline_trusted_logins 全表行（启动加载用）。 */
+    public record OfflineTrustedLoginRow(UUID playerUuid, String ipAddress, long authenticatedAt) {
+    }
+
     public static void saveOfflineTrustedLogin(UUID playerUuid, String ipAddress, long authenticatedAt) {
         DatabaseSupport.ensureDatabase();
         mergeOfflineTrustedLogin(playerUuid, ipAddress, authenticatedAt);
     }
 
-    public static boolean hasRecentOfflineTrustedLogin(UUID playerUuid, String ipAddress, long validAfter) {
-        if (playerUuid == null) {
-            return false;
-        }
-
+    /** 启动全量加载：读取 offline_trusted_logins 全表。 */
+    public static List<OfflineTrustedLoginRow> findAll() {
         return DatabaseSupport.executeQuery(
-                """
-                        SELECT 1
-                        FROM offline_trusted_logins
-                        WHERE player_uuid = ? AND ip_address = ? AND authenticated_at >= ?
-                        LIMIT 1
-                        """,
+                "SELECT player_uuid, ip_address, authenticated_at FROM offline_trusted_logins",
                 stmt -> {
-                    stmt.setString(1, playerUuid.toString());
-                    stmt.setString(2, ipAddress);
-                    stmt.setLong(3, validAfter);
                 },
-                ResultSet::next,
-                "Failed to read offline trusted login");
-    }
-
-    public static boolean hasSharedRecentOfflineTrustedIp(String ipAddress, long validAfter) {
-        return DatabaseSupport.executeQuery(
-                """
-                        SELECT COUNT(DISTINCT player_uuid) AS player_count
-                        FROM offline_trusted_logins
-                        WHERE ip_address = ? AND authenticated_at >= ?
-                        """,
-                stmt -> {
-                    stmt.setString(1, ipAddress);
-                    stmt.setLong(2, validAfter);
+                rs -> {
+                    List<OfflineTrustedLoginRow> results = new ArrayList<>();
+                    while (rs.next()) {
+                        results.add(new OfflineTrustedLoginRow(
+                                UUID.fromString(rs.getString("player_uuid")),
+                                rs.getString("ip_address"),
+                                rs.getLong("authenticated_at")));
+                    }
+                    return results;
                 },
-                rs -> rs.next() && rs.getLong("player_count") > 1L,
-                "Failed to read shared offline trusted IP");
+                "Failed to load offline trusted logins");
     }
 
     public static void clearOfflineTrustedLogins(UUID playerUuid) {
@@ -64,6 +52,21 @@ public final class OfflineTrustedLoginDao {
                 "DELETE FROM offline_trusted_logins WHERE player_uuid = ?",
                 stmt -> stmt.setString(1, playerUuid.toString()),
                 "Failed to clear offline trusted logins");
+    }
+
+    /** 删除指定 (uuid, ip) 单条记录（免密窗口惰性过期用）。 */
+    public static void clearOfflineTrustedLogin(UUID playerUuid, String ipAddress) {
+        if (playerUuid == null || ipAddress == null) {
+            return;
+        }
+
+        DatabaseSupport.executeUpdate(
+                "DELETE FROM offline_trusted_logins WHERE player_uuid = ? AND ip_address = ?",
+                stmt -> {
+                    stmt.setString(1, playerUuid.toString());
+                    stmt.setString(2, ipAddress);
+                },
+                "Failed to clear offline trusted login");
     }
 
     /**

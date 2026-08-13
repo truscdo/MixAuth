@@ -4,6 +4,8 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -13,21 +15,31 @@ public final class OfflineLoginBlockDao {
     private OfflineLoginBlockDao() {
     }
 
+    /** offline_login_blocks 全表行（启动加载用）。 */
+    public record OfflineLoginBlockRow(UUID playerUuid, long blockedUntil) {
+    }
+
     public static void saveOfflineLoginBlock(UUID playerUuid, long blockedUntil) {
         DatabaseSupport.ensureDatabase();
         mergeOfflineLoginBlock(playerUuid, blockedUntil);
     }
 
-    public static long findOfflineLoginBlockedUntil(UUID playerUuid) {
-        if (playerUuid == null) {
-            return 0L;
-        }
-
+    /** 启动全量加载：读取 offline_login_blocks 全表。 */
+    public static List<OfflineLoginBlockRow> findAll() {
         return DatabaseSupport.executeQuery(
-                "SELECT blocked_until FROM offline_login_blocks WHERE player_uuid = ? LIMIT 1",
-                stmt -> stmt.setString(1, playerUuid.toString()),
-                rs -> rs.next() ? rs.getLong("blocked_until") : 0L,
-                "Failed to read offline login block");
+                "SELECT player_uuid, blocked_until FROM offline_login_blocks",
+                stmt -> {
+                },
+                rs -> {
+                    List<OfflineLoginBlockRow> results = new ArrayList<>();
+                    while (rs.next()) {
+                        results.add(new OfflineLoginBlockRow(
+                                UUID.fromString(rs.getString("player_uuid")),
+                                rs.getLong("blocked_until")));
+                    }
+                    return results;
+                },
+                "Failed to load offline login blocks");
     }
 
     public static void clearOfflineLoginBlock(UUID playerUuid) {

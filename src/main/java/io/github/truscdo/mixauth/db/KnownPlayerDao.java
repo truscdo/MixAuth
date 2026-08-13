@@ -6,7 +6,6 @@ import java.sql.SQLException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.UUID;
 
 /**
@@ -19,16 +18,23 @@ public final class KnownPlayerDao {
     public record KnownPlayerEntry(UUID playerUuid, String username, String loginMode) {
     }
 
-    public static String findLoginMode(UUID playerUuid) {
-        if (playerUuid == null) {
-            return null;
-        }
-
+    /** 启动全量加载：读取 known_players 全表。 */
+    public static List<KnownPlayerEntry> findAll() {
         return DatabaseSupport.executeQuery(
-                "SELECT login_mode FROM known_players WHERE player_uuid = ? LIMIT 1",
-                stmt -> stmt.setString(1, playerUuid.toString()),
-                rs -> rs.next() ? rs.getString("login_mode") : null,
-                "Failed to read known player");
+                "SELECT player_uuid, username, login_mode FROM known_players",
+                stmt -> {
+                },
+                rs -> {
+                    List<KnownPlayerEntry> results = new ArrayList<>();
+                    while (rs.next()) {
+                        results.add(new KnownPlayerEntry(
+                                UUID.fromString(rs.getString("player_uuid")),
+                                rs.getString("username"),
+                                rs.getString("login_mode")));
+                    }
+                    return results;
+                },
+                "Failed to load known players");
     }
 
     public static void saveKnownPlayer(UUID playerUuid, String username, String loginMode) {
@@ -49,55 +55,6 @@ public final class KnownPlayerDao {
                 "DELETE FROM known_players WHERE player_uuid = ?",
                 stmt -> stmt.setString(1, playerUuid.toString()),
                 "Failed to remove known player") > 0;
-    }
-
-    public static List<KnownPlayerEntry> findKnownPlayersByUsername(String username) {
-        if (username == null || username.isBlank()) {
-            return List.of();
-        }
-
-        return DatabaseSupport.executeQuery(
-                "SELECT player_uuid, username, login_mode FROM known_players WHERE username = ?",
-                stmt -> stmt.setString(1, username),
-                rs -> {
-                    List<KnownPlayerEntry> results = new ArrayList<>();
-                    while (rs.next()) {
-                        results.add(new KnownPlayerEntry(
-                                UUID.fromString(rs.getString("player_uuid")),
-                                rs.getString("username"),
-                                rs.getString("login_mode")));
-                    }
-                    return results;
-                },
-                "Failed to look up known players by username");
-    }
-
-    public static List<KnownPlayerEntry> findKnownPlayersByPrefix(String prefix, int limit) {
-        if (prefix == null || prefix.isBlank()) {
-            return List.of();
-        }
-
-        String pattern = prefix.toLowerCase(Locale.ROOT) + "%";
-        return DatabaseSupport.executeQuery(
-                "SELECT player_uuid, username, login_mode FROM known_players " +
-                        "WHERE LOWER(username) LIKE ? OR LOWER(player_uuid) LIKE ? " +
-                        "ORDER BY username LIMIT ?",
-                stmt -> {
-                    stmt.setString(1, pattern);
-                    stmt.setString(2, pattern);
-                    stmt.setInt(3, limit);
-                },
-                rs -> {
-                    List<KnownPlayerEntry> results = new ArrayList<>();
-                    while (rs.next()) {
-                        results.add(new KnownPlayerEntry(
-                                UUID.fromString(rs.getString("player_uuid")),
-                                rs.getString("username"),
-                                rs.getString("login_mode")));
-                    }
-                    return results;
-                },
-                "Failed to find known players by prefix");
     }
 
     private static void mergeKnownPlayer(UUID playerUuid, String username, String loginMode) {

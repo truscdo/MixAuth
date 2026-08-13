@@ -28,7 +28,7 @@ public final class AuthCommands {
         if (remaining.isEmpty()) {
             return Suggestions.empty();
         }
-        List<KnownPlayerDao.KnownPlayerEntry> entries = KnownPlayerDao.findKnownPlayersByPrefix(remaining, 20);
+        List<KnownPlayerDao.KnownPlayerEntry> entries = KnownPlayerService.findKnownPlayersByPrefix(remaining, 20);
         if (entries == null || entries.isEmpty()) {
             return Suggestions.empty();
         }

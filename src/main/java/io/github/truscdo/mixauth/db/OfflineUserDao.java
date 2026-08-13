@@ -2,9 +2,10 @@ package io.github.truscdo.mixauth.db;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -14,16 +15,26 @@ public final class OfflineUserDao {
     private OfflineUserDao() {
     }
 
-    public static boolean isOfflineRegistered(UUID playerUuid) {
-        if (playerUuid == null) {
-            return false;
-        }
+    /** offline_users 全表行（启动加载用）。 */
+    public record OfflineUserRow(UUID playerUuid, String passwordHash) {
+    }
 
+    /** 启动全量加载：读取 offline_users 全表。 */
+    public static List<OfflineUserRow> findAll() {
         return DatabaseSupport.executeQuery(
-                "SELECT 1 FROM offline_users WHERE player_uuid = ? LIMIT 1",
-                stmt -> stmt.setString(1, playerUuid.toString()),
-                ResultSet::next,
-                "Failed to read offline user");
+                "SELECT player_uuid, password_hash FROM offline_users",
+                stmt -> {
+                },
+                rs -> {
+                    List<OfflineUserRow> results = new ArrayList<>();
+                    while (rs.next()) {
+                        results.add(new OfflineUserRow(
+                                UUID.fromString(rs.getString("player_uuid")),
+                                rs.getString("password_hash")));
+                    }
+                    return results;
+                },
+                "Failed to load offline users");
     }
 
     public static boolean insertOfflineUser(UUID playerUuid, String passwordHash) {
@@ -51,18 +62,6 @@ public final class OfflineUserDao {
             }
             throw new IllegalStateException("Failed to create offline account", sqlException);
         }
-    }
-
-    public static String findOfflinePasswordHash(UUID playerUuid) {
-        if (playerUuid == null) {
-            return null;
-        }
-
-        return DatabaseSupport.executeQuery(
-                "SELECT password_hash FROM offline_users WHERE player_uuid = ? LIMIT 1",
-                stmt -> stmt.setString(1, playerUuid.toString()),
-                rs -> rs.next() ? rs.getString("password_hash") : null,
-                "Failed to verify offline password");
     }
 
     public static boolean deleteOfflineUser(UUID playerUuid) {
