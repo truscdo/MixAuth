@@ -21,6 +21,12 @@ import java.util.UUID;
  * <p>
  * 触发方式：预置登录模式（markLoginMode）→ placeNewPlayer 进服 → 真实 PlayerLoggedInEvent
  * → AuthServerEvents.onPlayerLoggedIn 路由分支。
+ * <p>
+ * 消息断言一律用「存在检查」（{@link AuthGameTestBase#assertAnyMessage}）而非「最后一条」
+ * （{@link AuthGameTestBase#assertLastMessage}）：testframework 的 TEST_STORE
+ * 在新增测试后
+ * 首次运行时会给玩家发 Welcome + 新增测试列表，顶掉最后一条系统消息导致 assertLastMessage
+ * 偶发失败。存在检查对消息顺序不敏感，且能同时容忍进服广播等无关消息混入。
  */
 public class LoginRoutingGameTest extends AuthGameTestBase {
 
@@ -51,7 +57,7 @@ public class LoginRoutingGameTest extends AuthGameTestBase {
         GameTestPlayer player = helper.joinServer("RouteOfflineNew", uuid, OnlineAuthService.LoginMode.OFFLINE,
                 FAKE_IP);
         helper.assertPendingStage(player, OfflineAuthSessionService.OfflineAuthStage.REGISTER);
-        helper.assertLastMessage(player, "auth.prompt.register");
+        helper.assertAnyMessage(player, "auth.prompt.register");
         helper.succeed();
     }
 
@@ -65,7 +71,7 @@ public class LoginRoutingGameTest extends AuthGameTestBase {
         helper.recordTrustedIp(uuid, FAKE_IP);
         GameTestPlayer player = helper.joinServer("RouteTrusted", uuid, OnlineAuthService.LoginMode.OFFLINE, FAKE_IP);
         helper.assertNoPending(player);
-        helper.assertLastMessage(player, "auth.message.trusted_login_bypass",
+        helper.assertAnyMessage(player, "auth.message.trusted_login_bypass",
                 OfflineAuthService.describeTrustedLoginWindow(AuthTranslations.resolveLanguage(player)));
         helper.succeed();
     }
@@ -91,7 +97,7 @@ public class LoginRoutingGameTest extends AuthGameTestBase {
         helper.resetPlayerData(uuid);
         GameTestPlayer player = helper.joinServer("RouteOnline", uuid, OnlineAuthService.LoginMode.ONLINE, FAKE_IP);
         helper.assertNoPending(player);
-        helper.assertLastMessage(player, "auth.message.current_login_mode",
+        helper.assertAnyMessage(player, "auth.message.current_login_mode",
                 AuthTranslations.textForLanguage(AuthTranslations.resolveLanguage(player), "auth.login_mode.online"));
         helper.succeed();
     }
@@ -127,7 +133,7 @@ public class LoginRoutingGameTest extends AuthGameTestBase {
         GameTestPlayer player = helper.joinServerViaRecordedLogin(
                 "RouteProdOnline", uuid, OnlineAuthService.LoginMode.ONLINE, FAKE_IP);
         helper.assertNoPending(player);
-        helper.assertLastMessage(player, "auth.message.current_login_mode",
+        helper.assertAnyMessage(player, "auth.message.current_login_mode",
                 AuthTranslations.textForLanguage(AuthTranslations.resolveLanguage(player), "auth.login_mode.online"));
         helper.succeed();
     }
