@@ -30,6 +30,7 @@ import java.net.SocketAddress;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import java.util.function.BooleanSupplier;
 
 /**
  * GameTest 集成测试基类。
@@ -230,6 +231,32 @@ public class AuthGameTestBase extends ExtendedGameTestHelper {
      */
     protected void resetPlayerData(UUID uuid) {
         KnownPlayerService.removeAllPlayerData(uuid);
+    }
+
+    /**
+     * 轮询 DAO 条件直到成立或超时（write-behind 落库/删除等待；不依赖 DirectDb 内部 API）。
+     * <p>
+     * 非关键写（recordBlock/recordKnown 等）返回后缓存立即可见，但 DB 侧由单 worker
+     * write-behind 异步落库，故断言 DB 前须轮询等待最终一致。
+     *
+     * @param timeoutMillis 超时毫秒数
+     * @param condition     轮询条件（各用例自行组合 DAO 过滤）
+     * @return 超时前条件成立返回 true，否则 false
+     */
+    protected boolean awaitDb(long timeoutMillis, BooleanSupplier condition) {
+        long deadline = System.currentTimeMillis() + timeoutMillis;
+        while (System.currentTimeMillis() < deadline) {
+            if (condition.getAsBoolean()) {
+                return true;
+            }
+            try {
+                Thread.sleep(10L);
+            } catch (InterruptedException interruptedException) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        return condition.getAsBoolean();
     }
 
     // ---------------------------------------------------------------- 内部连接
