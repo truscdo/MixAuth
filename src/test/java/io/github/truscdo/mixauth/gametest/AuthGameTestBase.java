@@ -87,12 +87,37 @@ public class AuthGameTestBase extends ExtendedGameTestHelper {
 
     /**
      * 预置登录模式后让玩家进服（进服路由测试入口）。
+     * <p>
+     * 注意：本方法直接 {@code markLoginMode} 预置内存映射，<b>绕过了生产路径
+     * {@code recordKnownPlayer}</b>。若该生产方法内部丢失 {@code markLoginMode} 调用
+     * （历史回归 393e922），经本方法驱动的用例无法发现——需要覆盖生产链路时请改用
+     * {@link #joinServerViaRecordedLogin}。
      *
      * @param mode 预置的登录模式（null 表示不预置 → 无路由）
      */
     protected GameTestPlayer joinServer(String username, UUID uuid, OnlineAuthService.LoginMode mode, String fakeIp) {
         if (mode != null) {
             KnownPlayerService.markLoginMode(uuid, mode);
+        }
+        return createMockPlayer(username, uuid, fakeIp);
+    }
+
+    /**
+     * 经真实生产登录记录 API 预置模式后进服（进服路由测试的「生产路径」入口）。
+     * <p>
+     * 与 {@link #joinServer} 的区别：本方法调用与 mixin 登录记录分支完全一致的生产 API
+     * （OFFLINE → {@code OfflineAuthService.recordOfflineLogin}，ONLINE →
+     * {@code OnlineAuthService.recordOnlineLogin}），再 placeNewPlayer 触发真实
+     * {@code PlayerLoggedInEvent}。若 {@code recordKnownPlayer} 内部再次丢失
+     * {@code markLoginMode} 调用，进服后 {@code consumeLoginMode} 将返回 null，
+     * 离线 LOGIN/REGISTER 提示不触发，此类用例即可捕获回归。
+     */
+    protected GameTestPlayer joinServerViaRecordedLogin(String username, UUID uuid,
+            OnlineAuthService.LoginMode mode, String fakeIp) {
+        if (mode == OnlineAuthService.LoginMode.OFFLINE) {
+            OfflineAuthService.recordOfflineLogin(uuid, username);
+        } else if (mode == OnlineAuthService.LoginMode.ONLINE) {
+            OnlineAuthService.recordOnlineLogin(new GameProfile(uuid, username));
         }
         return createMockPlayer(username, uuid, fakeIp);
     }

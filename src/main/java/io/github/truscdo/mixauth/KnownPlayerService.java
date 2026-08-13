@@ -58,9 +58,14 @@ public final class KnownPlayerService {
 
     /**
      * 记录玩家登录模式（非关键写，write-behind，缓存先行；减写收进 AuthStore）。
+     * <p>
+     * 同时把模式预置到内存映射（markLoginMode），供玩家进服（PlayerLoggedInEvent）
+     * 消费以启动离线认证提示——否则 onPlayerLoggedIn 的 consumeLoginMode 恒为 null，
+     * 离线 LOGIN/REGISTER 提示不会触发。
      */
     public static void recordKnownPlayer(UUID playerUuid, String username, OnlineAuthService.LoginMode mode) {
         AuthStore.recordKnown(playerUuid, username, mode);
+        markLoginMode(playerUuid, mode);
     }
 
     /**
@@ -82,6 +87,7 @@ public final class KnownPlayerService {
         if (playerUuid == null) {
             return false;
         }
+        LOGIN_MODES.remove(playerUuid);
         return AuthStore.removePlayer(playerUuid).join();
     }
 

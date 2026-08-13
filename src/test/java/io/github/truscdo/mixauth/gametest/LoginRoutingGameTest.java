@@ -95,4 +95,40 @@ public class LoginRoutingGameTest extends AuthGameTestBase {
                 AuthTranslations.textForLanguage(AuthTranslations.resolveLanguage(player), "auth.login_mode.online"));
         helper.succeed();
     }
+
+    // ---------------------------------------------------------------- 生产路径
+
+    /**
+     * 以上用例均经 {@code joinServer}（直接 markLoginMode）驱动，绕过生产方法
+     * {@code recordKnownPlayer}。以下用例改走与 mixin 登录记录分支完全一致的生产 API
+     * （joinServerViaRecordedLogin），可捕获 {@code recordKnownPlayer} 内部丢失
+     * {@code markLoginMode} 调用的回归（历史回归 393e922）。
+     */
+
+    @GameTest
+    @EmptyTemplate
+    @TestHolder(description = { "生产路径：recordOfflineLogin（mixin OFFLINE 分支）后进服 → REGISTER 待认证 + 注册提示" })
+    static void offlineRecordedViaProductionApi(AuthGameTestBase helper) {
+        UUID uuid = offlineUuid("RouteProdOffline");
+        helper.resetPlayerData(uuid);
+        GameTestPlayer player = helper.joinServerViaRecordedLogin(
+                "RouteProdOffline", uuid, OnlineAuthService.LoginMode.OFFLINE, FAKE_IP);
+        helper.assertPendingStage(player, OfflineAuthSessionService.OfflineAuthStage.REGISTER);
+        helper.assertAnyMessage(player, "auth.prompt.register");
+        helper.succeed();
+    }
+
+    @GameTest
+    @EmptyTemplate
+    @TestHolder(description = { "生产路径：recordOnlineLogin（mixin ONLINE 分支）后进服 → 放行 + 当前登录模式 ONLINE 提示" })
+    static void onlineRecordedViaProductionApi(AuthGameTestBase helper) {
+        UUID uuid = offlineUuid("RouteProdOnline");
+        helper.resetPlayerData(uuid);
+        GameTestPlayer player = helper.joinServerViaRecordedLogin(
+                "RouteProdOnline", uuid, OnlineAuthService.LoginMode.ONLINE, FAKE_IP);
+        helper.assertNoPending(player);
+        helper.assertLastMessage(player, "auth.message.current_login_mode",
+                AuthTranslations.textForLanguage(AuthTranslations.resolveLanguage(player), "auth.login_mode.online"));
+        helper.succeed();
+    }
 }
