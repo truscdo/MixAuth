@@ -1,11 +1,11 @@
 package io.github.truscdo.mixauth.offline;
 
+import io.github.truscdo.mixauth.compat.ProfileCompat;
 import io.github.truscdo.mixauth.AuthServerConfig;
 import io.github.truscdo.mixauth.LogUtil;
 import io.github.truscdo.mixauth.localization.AuthTranslations;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionResult;
-import net.minecraft.world.ItemInteractionResult;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.level.GameType;
@@ -65,14 +65,14 @@ public final class OfflineAuthSessionService {
 
     public static void beginPendingAuth(ServerPlayer player, OfflineAuthStage stage) {
         PendingOfflineAuth pendingOfflineAuth = new PendingOfflineAuth(player, stage);
-        PENDING_OFFLINE_AUTHS.put(player.getGameProfile().getId(), pendingOfflineAuth);
+        PENDING_OFFLINE_AUTHS.put(ProfileCompat.uuid(player.getGameProfile()), pendingOfflineAuth);
         RestrictionApplier.apply(player, pendingOfflineAuth);
         RestrictionApplier.spoofInventoryView(player, pendingOfflineAuth);
         sendAuthPrompt(player, stage);
     }
 
     public static PendingOfflineAuth getPendingAuth(ServerPlayer player) {
-        return PENDING_OFFLINE_AUTHS.get(player.getGameProfile().getId());
+        return PENDING_OFFLINE_AUTHS.get(ProfileCompat.uuid(player.getGameProfile()));
     }
 
     public static void completeAuthentication(ServerPlayer player, String messageKey, Object... args) {
@@ -82,10 +82,11 @@ public final class OfflineAuthSessionService {
     }
 
     public static PendingOfflineAuth clearPendingAuth(ServerPlayer player) {
-        PendingOfflineAuth pendingOfflineAuth = PENDING_OFFLINE_AUTHS.remove(player.getGameProfile().getId());
+        PendingOfflineAuth pendingOfflineAuth = PENDING_OFFLINE_AUTHS
+                .remove(ProfileCompat.uuid(player.getGameProfile()));
         if (pendingOfflineAuth == null) {
             LogUtil.getLogger().warn("Attempted to complete authentication for player {} who has no pending auth",
-                    player.getGameProfile().getName());
+                    ProfileCompat.name(player.getGameProfile()));
             return null;
         }
 
@@ -122,7 +123,7 @@ public final class OfflineAuthSessionService {
         long now = System.currentTimeMillis();
         Set<UUID> onlinePlayers = new HashSet<>();
         for (ServerPlayer player : event.getServer().getPlayerList().getPlayers()) {
-            UUID playerUuid = player.getGameProfile().getId();
+            UUID playerUuid = ProfileCompat.uuid(player.getGameProfile());
             onlinePlayers.add(playerUuid);
             PendingOfflineAuth pendingOfflineAuth = PENDING_OFFLINE_AUTHS.get(playerUuid);
             if (pendingOfflineAuth == null) {
@@ -235,11 +236,9 @@ public final class OfflineAuthSessionService {
     }
 
     public static void onUseItemOnBlock(UseItemOnBlockEvent event) {
-        if (!(event.getPlayer() instanceof ServerPlayer player))
-            return;
-        PendingActionGuard.denyIfPending(player,
-                pending -> event.cancelWithResult(ItemInteractionResult.FAIL),
-                "auth.error.cannot_interact_blocks_items_before_login");
+        // 版本特定实现：cancelWithResult 参数类型在 1.21.2 由 ItemInteractionResult 变为
+        // InteractionResult，无单一写法可全版本编译；实现见 src/neo-<ver>/java
+        UseItemOnBlockCompat.handle(event);
     }
 
     public static void onItemToss(ItemTossEvent event) {

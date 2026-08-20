@@ -4,6 +4,7 @@ import com.mojang.brigadier.Command;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import io.github.truscdo.mixauth.AuthServerConfig;
+import io.github.truscdo.mixauth.compat.ProfileCompat;
 import io.github.truscdo.mixauth.offline.OfflineAuthService;
 import io.github.truscdo.mixauth.offline.OfflineAuthSessionService;
 import io.github.truscdo.mixauth.localization.AuthTranslations;
@@ -54,7 +55,7 @@ public final class LoginCommand {
         }
 
         // BCrypt 校验移到后台有界执行器：主线程只提交任务，结果回到主线程再改状态。
-        UUID playerUuid = player.getGameProfile().getId();
+        UUID playerUuid = ProfileCompat.uuid(player.getGameProfile());
         OfflineAuthService.verifyOfflinePasswordAsync(playerUuid, password)
                 .whenComplete((verified, throwable) -> CommandSupport.executeOnServerThread(source,
                         () -> completeLogin(source, player, playerUuid, pendingOfflineAuth, verified, throwable)));

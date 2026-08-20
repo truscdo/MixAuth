@@ -1,0 +1,48 @@
+[database]
+#H2 database base path. Relative paths are resolved from the server root; H2 creates <path>.mv.db.
+path = "mixauth/mixauth"
+
+[offline_login]
+#Maximum password attempts before the account is temporarily blocked.
+#Range: 1 ~ 100
+max_login_attempts = 3
+#Temporary block duration, in minutes, after too many failed password attempts.
+#Range: 1 ~ 10080
+temporary_block_minutes = 5
+#Passwordless offline login window, in hours, for the same offline identity UUID and IP.
+#Range: 0 ~ 720
+trusted_login_window_hours = 24
+#How long an already-registered offline player can stay pending before being disconnected.
+#Range: 1 ~ 1440
+login_timeout_minutes = 1
+#How often to repeat the login or register prompt while a player is pending authentication.
+#Range: 1 ~ 300
+prompt_interval_seconds = 1
+#BCrypt work factor used when hashing offline passwords.
+#Range: 4 ~ 31
+bcrypt_cost = 4
+#Minimum password length. BCrypt input is limited to 72 bytes.
+#Range: 1 ~ 72
+min_password_length = 1
+#Maximum password length. BCrypt truncates input beyond 72 bytes.
+#Range: 1 ~ 72
+max_password_length = 72
+#Path to an external password blacklist file, one password per line. Lines starting with # are skipped. If the file does not exist, the built-in blacklist is copied to this path on first load. Relative paths are resolved from the server root.
+password_blacklist_path = "mixauth/password_blacklist.txt"
+
+[online_validation]
+#HTTP connect timeout, in seconds, for Mojang session validation requests.
+#Range: 1 ~ 120
+connect_timeout_seconds = 10
+#HTTP request timeout, in seconds, for Mojang session validation requests.
+#Range: 1 ~ 120
+request_timeout_seconds = 10
+#How long a pending online handshake may remain valid before it is discarded.
+#Range: 5 ~ 600
+pending_handshake_ttl_seconds = 120
+
+[localization]
+#Default language used when player locale auto-detection is disabled or no supported locale is available.
+default_language = "en_us"
+#Whether to use the player's reported client language when it matches a supported locale.
+auto_detect_player_language = true

@@ -16,12 +16,15 @@ import static org.junit.jupiter.api.Assertions.*;
  * {@link OfflineModeDetector} 的单元测试。
  *
  * <p>
- * 测试数据来源：{@code temp/测试用UUID数据.md}，涵盖标准离线 UUID、
- * PCL 专有离线 UUID、正版 UUID 以及边界/异常情况。
+ * 测试数据覆盖四类场景：
+ * 标准离线 UUID（{@code UUID.nameUUIDFromBytes("OfflinePlayer:" + username)}
+ * 重算对比，含带/不带连字符两种输入格式）；
+ * PCL 专有离线 UUID（版本位 3 + 变体位 9 结构特征 + 用户名字长验证）；
+ * 正版 UUID（v4 随机，版本位 4 → 需进一步查验）；
+ * 以及边界/异常（null / blank / 空用户名、null UUID 等 → 需进一步查验）。
  * </p>
  *
  * @see OfflineModeDetector
- * @see <a href="file:temp/测试用UUID数据.md">测试用 UUID 数据</a>
  */
 @DisplayName("OfflineModeDetector — 离线模式 UUID 检测")
 class OfflineModeDetectorTest {

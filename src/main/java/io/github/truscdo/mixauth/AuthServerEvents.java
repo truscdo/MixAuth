@@ -1,5 +1,6 @@
 package io.github.truscdo.mixauth;
 
+import io.github.truscdo.mixauth.compat.ProfileCompat;
 import io.github.truscdo.mixauth.command.AuthCommandRegistry;
 import io.github.truscdo.mixauth.command.CommandSupport;
 import io.github.truscdo.mixauth.localization.AuthTranslations;
@@ -25,7 +26,7 @@ public final class AuthServerEvents {
             return;
         }
 
-        UUID playerUuid = player.getGameProfile().getId();
+        UUID playerUuid = ProfileCompat.uuid(player.getGameProfile());
 
         OnlineAuthService.LoginMode loginMode = OnlineAuthService.consumeLoginMode(playerUuid);
         if (loginMode == null) {

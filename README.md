@@ -2,14 +2,14 @@
 
 中文文档见 [doc/README.zh.md](doc/README.zh.md)。
 
-Provides authentication for NeoForge 1.21.1 offline-mode servers.
+Provides authentication for NeoForge offline-mode servers.
 
-This mod has a direct goal:
+This mod has two main goals:
 
 - Premium players can complete Mojang online validation on an offline-mode server.
 - Offline players must register or login before they can move, interact, chat, or view their real inventory.
 
-## Main Features
+## Features
 
 ### 1. Offline Player Registration and Password Login
 
@@ -26,9 +26,9 @@ This mod has a direct goal:
 ### 3. Known Player List Management
 
 - Every successful login (premium or offline) is recorded in the known player list, including UUID, username, and login mode.
-- On the next login, the player is routed directly according to their known mode, skipping the Mojang pre-check to avoid hitting API rate limits.
-- Administrators can use `auth setmode <UUID|username> <online|offline>` to manually specify a player's login mode.
+- On the next login, the player is routed directly according to their known mode, skipping mode checks.
 - If a player is in the list and marked as ONLINE, but premium validation fails, they are rejected immediately.
+- Administrators can use `auth setmode <UUID|username> <online|offline>` to manually specify a player's login mode.
 - Administrators can use `auth remove <UUID|username>` to completely remove all stored data for a player (known player list, offline password, login blocks, and passwordless login records). The player will return to a first-login state on next join.
 
 ### 4. Passwordless Login Window
@@ -57,77 +57,6 @@ Before an offline player completes registration or login, the mod places the pla
 - Password blacklist (auto-created on first startup, directly editable).
 - Mojang network request timeouts.
 - Default language and automatic player-language detection.
-
-## Login Flow Diagram
-
-The login flow is divided into three phases by responsibility: **Entry Routing** (determining premium or offline path) → **Premium Login** or **Offline Login**.
-
-### Phase 1: Entry Routing — Block Check + Known Player List + Offline UUID Local Detection + Mojang Pre-check
-
-```mermaid
-flowchart TD
-    A["Player connects<br/>(auth$interceptHello)"] --> B{"Is the account currently temporarily blocked from offline login?<br/>(OfflineAuthService.getOfflineLoginBlockRemainingMillis)"}
-    B -- "Yes" --> B1["Reject connection<br/>(disconnect)"]
-    B -- "No" --> C["Intercept Login Start<br/>(callbackInfo.cancel)"]
-
-    C --> C1{"Query known_players list<br/>(KnownPlayerService.resolveLoginMode)"}
-    C1 -- "HIT ONLINE" --> TO_ONLINE["→ Premium handshake flow"]
-    C1 -- "HIT OFFLINE" --> TO_OFFLINE["→ Offline login flow"]
-
-    C1 -- "MISS" --> C1_5{"Offline-mode UUID local detection<br/>(OfflineModeDetector.check)"}
-    C1_5 -- "CONFIRMED<br/>Standard offline / PCL offline" --> TO_OFFLINE
-    C1_5 -- "NEEDS_VERIFICATION" --> C2["Run Mojang profile pre-check<br/>(OnlineHandshakeValidationService.requestPreLoginCheck → doRequestPreLoginCheck)"]
-
-    C2 --> D{"Pre-check result<br/>(auth$finishPreLoginCheck)"}
-    D -- "ONLINE: username and UUID match a Mojang profile" --> TO_ONLINE
-    D -- "OFFLINE: no Mojang profile or username/UUID mismatch" --> TO_OFFLINE
-    D -- "DISCONNECT: 429/5xx/exception" --> D1["Reject connection<br/>(auth$disconnectBeforeHandshake)"]
-
-    TO_ONLINE -.-> E_REF["（see 『Premium Login』 flow）"]
-    TO_OFFLINE -.-> K_REF["（see 『Offline Login』 flow）"]
-```
-
-### Phase 2: Premium Login
-
-```mermaid
-flowchart TD
-    E["Send Encryption Request and enter premium handshake<br/>(auth$beginOnlineHandshake → OnlineHandshakeValidationService.beginValidation)"] --> F["Client returns Key → Server verifies challenge<br/>(auth$interceptKey → handleKey)"]
-    F --> G{"Do challenge and hasJoined validation succeed?<br/>(OnlineHandshakeValidationService.requestHasJoined → doRequestHasJoined<br/>→ auth$finishValidation)"}
-    G -- "Yes" --> H["Continue login as premium identity<br/>(auth$startClientVerification)"]
-    H --> I["Record in known player list<br/>(OnlineAuthService.recordOnlineLogin → KnownPlayerService.recordKnownPlayer)"]
-    I --> J["Enter game"]
-    G -- "No" --> G1["Reject connection<br/>(auth$disconnectAfterOnlineValidationFailure)"]
-```
-
-### Phase 3: Offline Login
-
-```mermaid
-flowchart TD
-    K["Continue login as offline identity<br/>(auth$finishOfflineOrReject → recordOfflineLogin → markLoginMode OFFLINE<br/>→ auth$startClientVerification)"]
-
-    K --> JOIN["Player joins game → triggers PlayerLoggedInEvent<br/>(AuthServerEvents.onPlayerLoggedIn)"]
-    JOIN --> L{"Is offline password already registered?<br/>(OfflineAuthService.isOfflineRegistered)"}
-
-    L -- "No" --> M["Enter pending-registration state<br/>(OfflineAuthSessionService.beginPendingAuth, stage=REGISTER)"]
-    M --> N["Only allow register command<br/>(OfflineAuthSessionService.onCommand intercepts non-register/login commands)"]
-    N --> O["Registration succeeds and auto-login completes<br/>(AuthServerEvents.registerOfflineUser → registerOfflineUser → completeAuthentication)"]
-    O --> P["Record trusted login window<br/>(OfflineAuthService.recordTrustedOfflineLogin)"]
-    P --> R["Record in known player list<br/>(already recorded in Phase K)"]
-    R --> J["Enter game"]
-
-    L -- "Yes" --> Q{"Does the passwordless window apply?<br/>Same UUID + same IP and that IP has not recently mapped to multiple UUIDs<br/>(OfflineAuthService.canBypassOfflineLogin)"}
-    Q -- "Yes" --> R
-    Q -- "No" --> S["Enter pending-login state and start timeout timer<br/>(OfflineAuthSessionService.beginPendingAuth, stage=LOGIN)"]
-    S --> T{"Was login password submitted before timeout?<br/>(onServerTick → check loginDeadlineAtMillis)"}
-    T -- "No" --> U["Disconnect: login timeout<br/>(disconnect)"]
-    T -- "Yes" --> V{"Is the password correct?<br/>(AuthServerEvents.loginOfflineUser → OfflineAuthService.verifyOfflinePassword)"}
-    V -- "Yes" --> W["Login succeeds<br/>(completeAuthentication)"]
-    W --> X["Record trusted login window<br/>(recordTrustedOfflineLogin)"]
-    X --> R
-    V -- "No" --> Y{"Maximum failed attempts reached?<br/>(pendingOfflineAuth.failedLoginAttempts >= maxLoginAttempts)"}
-    Y -- "Yes" --> Z["Disconnect and write temporary block<br/>(blockOfflineLogin + disconnect)"]
-    Y -- "No" --> S
-```
 
 ## Configuration
 
@@ -208,15 +137,10 @@ Additional notes:
 | `auth setmode <UUID\|username> <online\|offline>` | Set the login mode for the specified player, forcing premium or offline login for future joins. |
 | `auth remove <UUID\|username>` | Completely remove all stored data for the specified player (known list, offline password, login blocks, passwordless records). They will return to a first-login state on next join. |
 
-## Environment
-
-- NeoForge
-- Minecraft 1.21.1
-
 ## Build
 
 ```powershell
-./gradlew build
+./build-matrix.bat
 ```
 
-The build output is written to `build/libs/auth-x.x.x.jar` by default.
+The build output is written to `/dist/<mc>/` by default.

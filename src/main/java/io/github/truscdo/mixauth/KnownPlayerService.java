@@ -1,6 +1,7 @@
 package io.github.truscdo.mixauth;
 
 import io.github.truscdo.mixauth.cache.AuthStore;
+import io.github.truscdo.mixauth.compat.ProfileCompat;
 import io.github.truscdo.mixauth.db.KnownPlayerDao;
 import io.github.truscdo.mixauth.online.OnlineAuthService;
 import net.minecraft.core.UUIDUtil;
@@ -45,7 +46,7 @@ public final class KnownPlayerService {
             }
         }
 
-        UUID serverUuid = UUIDUtil.createOfflineProfile(username).getId();
+        UUID serverUuid = ProfileCompat.uuid(UUIDUtil.createOfflineProfile(username));
         if (!serverUuid.equals(clientUuid)) {
             OnlineAuthService.LoginMode mode = AuthStore.getLoginMode(serverUuid);
             if (mode != null) {

@@ -2,14 +2,14 @@
 
 For the English documentation, see [README.md](README.md).
 
-为 NeoForge 1.21.1 离线模式服务器提供认证登录能力。
+为 NeoForge 离线模式服务器提供认证登录能力。
 
-这个 Mod 的目标很直接：
+本mod的主要目标有两点：
 
 - 正版玩家可以在离线服中走 Mojang 正版校验。
 - 离线玩家需先注册或登录，之后才能移动、交互、聊天和查看真实背包。
 
-## 主要功能
+## 功能
 
 ### 1. 离线玩家注册与密码登录
 
@@ -26,9 +26,9 @@ For the English documentation, see [README.md](README.md).
 ### 3. 已知玩家名单管理
 
 - 每位成功登录的玩家（无论正版或离线）会被记录到已知玩家名单中，包含 UUID、用户名和登录模式。
-- 下次登录时直接按已知模式路由，跳过 Mojang 预检查，避免触发 API 限流。
-- 管理员可通过 `auth setmode <UUID|用户名> <online|offline>` 手动指定某玩家的登录模式。
+- 下次登录时直接按已知模式路由，跳过模式检查。
 - 位于名单中且标记为 ONLINE 的玩家，如果正版校验失败，将被直接拒绝登录。
+- 管理员可通过 `auth setmode <UUID|用户名> <online|offline>` 手动指定某玩家的登录模式。
 - 管理员可通过 `auth remove <UUID|用户名>` 彻底清除该玩家的所有存储数据（已知名单、离线密码、封禁记录和免密登录记录）。下次加入服务器时将回到首次登录状态。
 
 ### 4. 免密登录窗口
@@ -57,77 +57,6 @@ For the English documentation, see [README.md](README.md).
 - 可配置密码黑名单（首次启动自动创建，可直接编辑）。
 - 可配置 Mojang 网络请求超时。
 - 可配置默认语言与玩家语言自动识别。
-
-## 登录流程图
-
-登录流程按职责分为三个阶段：**入口路由判定**（确定走正版还是离线路线）→ **正版登录** 或 **离线登录**。
-
-### 一、入口判定：封禁检查 + 已知玩家名单 + 离线 UUID 本地检测 + Mojang 预检查
-
-```mermaid
-flowchart TD
-    A["玩家连接服务器<br/>(auth$interceptHello)"] --> B{"账号当前是否处于离线登录临时封禁状态<br/>(OfflineAuthService.getOfflineLoginBlockRemainingMillis)"}
-    B -- "是" --> B1["拒绝连接<br/>(disconnect)"]
-    B -- "否" --> C["拦截 Login Start<br/>(callbackInfo.cancel)"]
-
-    C --> C1{"查 known_players 已知玩家名单<br/>(KnownPlayerService.resolveLoginMode)"}
-    C1 -- "命中 ONLINE" --> TO_ONLINE["→ 正版握手流程"]
-    C1 -- "命中 OFFLINE" --> TO_OFFLINE["→ 离线登录流程"]
-
-    C1 -- "未命中" --> C1_5{"离线模式 UUID 本地检测<br/>(OfflineModeDetector.check)"}
-    C1_5 -- "CONFIRMED<br/>标准离线/PCL 离线" --> TO_OFFLINE
-    C1_5 -- "NEEDS_VERIFICATION" --> C2["执行 Mojang 档案预检查<br/>(OnlineHandshakeValidationService.requestPreLoginCheck → doRequestPreLoginCheck)"]
-
-    C2 --> D{"预检查结果<br/>(auth$finishPreLoginCheck)"}
-    D -- "ONLINE: 用户名与 UUID 匹配 Mojang 档案" --> TO_ONLINE
-    D -- "OFFLINE: 无 Mojang 档案或用户名/UUID 不匹配" --> TO_OFFLINE
-    D -- "DISCONNECT: 429/5xx/异常等" --> D1["拒绝连接<br/>(auth$disconnectBeforeHandshake)"]
-
-    TO_ONLINE -.-> E_REF["（见『正版登录』流程图）"]
-    TO_OFFLINE -.-> K_REF["（见『离线登录』流程图）"]
-```
-
-### 二、正版登录
-
-```mermaid
-flowchart TD
-    E["发送 Encryption Request 并进入正版握手<br/>(auth$beginOnlineHandshake → OnlineHandshakeValidationService.beginValidation)"] --> F["客户端回复 Key → 服务器验证 challenge<br/>(auth$interceptKey → handleKey)"]
-    F --> G{"challenge 与 hasJoined 校验是否成功<br/>(OnlineHandshakeValidationService.requestHasJoined → doRequestHasJoined<br/>→ auth$finishValidation)"}
-    G -- "是" --> H["按正版身份继续登录<br/>(auth$startClientVerification)"]
-    H --> I["记录到已知玩家名单<br/>(OnlineAuthService.recordOnlineLogin → KnownPlayerService.recordKnownPlayer)"]
-    I --> J["进入游戏"]
-    G -- "否" --> G1["拒绝连接<br/>(auth$disconnectAfterOnlineValidationFailure)"]
-```
-
-### 三、离线登录
-
-```mermaid
-flowchart TD
-    K["按离线身份继续登录<br/>(auth$finishOfflineOrReject → recordOfflineLogin → markLoginMode OFFLINE<br/>→ auth$startClientVerification)"]
-
-    K --> JOIN["玩家加入游戏 → 触发 PlayerLoggedInEvent<br/>(AuthServerEvents.onPlayerLoggedIn)"]
-    JOIN --> L{"是否已注册离线密码<br/>(OfflineAuthService.isOfflineRegistered)"}
-
-    L -- "否" --> M["进入待注册状态<br/>(OfflineAuthSessionService.beginPendingAuth, stage=REGISTER)"]
-    M --> N["仅允许执行 register 命令<br/>(OfflineAuthSessionService.onCommand 拦截非 register/login 命令)"]
-    N --> O["注册成功并自动登录<br/>(AuthServerEvents.registerOfflineUser → registerOfflineUser → completeAuthentication)"]
-    O --> P["记录可信登录窗口<br/>(OfflineAuthService.recordTrustedOfflineLogin)"]
-    P --> R["记录到已知玩家名单<br/>(已在 K 阶段记录)"]
-    R --> J["进入游戏"]
-
-    L -- "是" --> Q{"是否命中免密窗口<br/>同 UUID + 同 IP 且该 IP 未近期关联多个 UUID<br/>(OfflineAuthService.canBypassOfflineLogin)"}
-    Q -- "是" --> R
-    Q -- "否" --> S["进入待登录状态并开始超时计时<br/>(OfflineAuthSessionService.beginPendingAuth, stage=LOGIN)"]
-    S --> T{"是否在超时前提交 login 密码<br/>(onServerTick → 检查 loginDeadlineAtMillis)"}
-    T -- "否" --> U["断开连接: 登录超时<br/>(disconnect)"]
-    T -- "是" --> V{"密码是否正确<br/>(AuthServerEvents.loginOfflineUser → OfflineAuthService.verifyOfflinePassword)"}
-    V -- "是" --> W["登录成功<br/>(completeAuthentication)"]
-    W --> X["记录可信登录窗口<br/>(recordTrustedOfflineLogin)"]
-    X --> R
-    V -- "否" --> Y{"是否达到最大错误次数<br/>(pendingOfflineAuth.failedLoginAttempts >= maxLoginAttempts)"}
-    Y -- "是" --> Z["断开连接并写入临时封禁<br/>(blockOfflineLogin + disconnect)"]
-    Y -- "否" --> S
-```
 
 ## 配置
 
@@ -208,15 +137,10 @@ auto_detect_player_language = true
 | `auth setmode <UUID\|用户名> <online\|offline>` | 设置指定玩家的登录模式，强制其后续使用正版或离线方式登录。 |
 | `auth remove <UUID\|用户名>` | 彻底清除指定玩家的所有存储数据（已知名单、离线密码、封禁记录、免密记录）。下次加入服务器时将回到首次登录状态。 |
 
-## 运行环境
-
-- NeoForge
-- Minecraft 1.21.1
-
 ## 构建打包
 
 ```powershell
-./gradlew build
+./build-matrix.bat
 ```
 
-构建产物默认输出到 `build/libs/auth-x.x.x.jar`。
+构建产物默认输出到 `/dist/<mc>/`。

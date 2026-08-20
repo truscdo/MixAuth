@@ -6,6 +6,7 @@ import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
 import com.mojang.brigadier.suggestion.Suggestions;
 import io.github.truscdo.mixauth.KnownPlayerService;
+import io.github.truscdo.mixauth.compat.ProfileCompat;
 import io.github.truscdo.mixauth.offline.OfflineAuthService;
 import io.github.truscdo.mixauth.online.OnlineAuthService;
 import io.github.truscdo.mixauth.db.KnownPlayerDao;
@@ -68,7 +69,7 @@ public final class AuthCommands {
                                                 StringArgumentType.getString(context, "password"),
                                                 StringArgumentType.getString(context, "confirmPassword"))))))
                 .then(Commands.literal("setpassword")
-                        .requires(source -> source.hasPermission(3))
+                        .requires(PermissionCompat::isAdmin)
                         .then(Commands.argument("target", StringArgumentType.word())
                                 .then(Commands.argument("password", StringArgumentType.word())
                                         .then(Commands.argument("confirmPassword", StringArgumentType.word())
@@ -79,7 +80,7 @@ public final class AuthCommands {
                                                         StringArgumentType.getString(context,
                                                                 "confirmPassword")))))))
                 .then(Commands.literal("setmode")
-                        .requires(source -> source.hasPermission(3))
+                        .requires(PermissionCompat::isAdmin)
                         .then(Commands.argument("target", StringArgumentType.word())
                                 .suggests(KNOWN_PLAYERS)
                                 .then(Commands.argument("mode", StringArgumentType.word())
@@ -89,7 +90,7 @@ public final class AuthCommands {
                                                 StringArgumentType.getString(context, "target"),
                                                 StringArgumentType.getString(context, "mode"))))))
                 .then(Commands.literal("remove")
-                        .requires(source -> source.hasPermission(3))
+                        .requires(PermissionCompat::isAdmin)
                         .then(Commands.argument("target", StringArgumentType.word())
                                 .suggests(KNOWN_PLAYERS)
                                 .executes(context -> removePlayer(
@@ -110,7 +111,7 @@ public final class AuthCommands {
             return 0;
         }
 
-        UUID playerUuid = player.getGameProfile().getId();
+        UUID playerUuid = ProfileCompat.uuid(player.getGameProfile());
         if (!OfflineAuthService.isOfflineRegistered(playerUuid)) {
             source.sendFailure(AuthTranslations.componentForSource(source, "auth.error.no_offline_password_register"));
             return 0;

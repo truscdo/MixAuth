@@ -77,7 +77,9 @@ public class PendingIsolationGameTest extends AuthGameTestBase {
         GameTestPlayer player = helper.joinServer("IsolPosLock", uuid, OnlineAuthService.LoginMode.OFFLINE, FAKE_IP);
         helper.assertPendingStage(player, OfflineAuthSessionService.OfflineAuthStage.REGISTER);
         Vec3 locked = player.position();
-        player.teleportTo(player.serverLevel(), locked.x + 100.0, locked.y, locked.z + 100.0, 0.0f, 0.0f);
+        // 版本无关写法：ServerPlayer.teleportTo 的 6 参重载 1.21.2 起被移除，
+        // 且 Entity.moveTo 1.21.5 起被移除；setPos 全版本稳定。仅需把玩家挪远即可。
+        player.setPos(locked.x + 100.0, locked.y, locked.z + 100.0);
         helper.startSequence()
                 .thenExecuteAfter(2, () -> {
                     Vec3 now = player.position();

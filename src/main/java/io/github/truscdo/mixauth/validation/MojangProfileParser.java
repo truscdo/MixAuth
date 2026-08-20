@@ -7,8 +7,11 @@ import com.google.gson.JsonParser;
 import com.mojang.authlib.GameProfile;
 import com.mojang.authlib.properties.Property;
 import io.github.truscdo.mixauth.LogUtil;
+import io.github.truscdo.mixauth.compat.ProfileCompat;
 import org.slf4j.Logger;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
@@ -38,7 +41,7 @@ public final class MojangProfileParser {
                     .filter(name -> !name.isBlank())
                     .orElse(fallbackUsername);
 
-            GameProfile profile = new GameProfile(uuid, profileName);
+            List<Property> parsedProperties = new ArrayList<>();
             JsonArray properties = root.getAsJsonArray("properties");
             if (properties != null) {
                 for (JsonElement propertyElement : properties) {
@@ -49,11 +52,16 @@ public final class MojangProfileParser {
                     Property property = signatureElement == null || signatureElement.isJsonNull()
                             ? new Property(name, value)
                             : new Property(name, value, signatureElement.getAsString());
-                    profile.getProperties().put(name, property);
+                    parsedProperties.add(property);
                 }
             }
 
-            return profile;
+            // 用 compat 工厂一次性构造：1.21.11（authlib 7.0.61）的 GameProfile properties
+            // 不可变，逐条 put 抛 UnsupportedOperationException → 被外层 catch(RuntimeException)
+            // 吞掉 → 返回 null → MojangClient 判 malformed → 在线验证（preLogin lookup +
+            // hasJoined）全断。工厂在 src/neo-1.21.11 覆盖实现中先构建可变 Multimap 再走
+            // 3 参构造（见 ProfileCompat.createProfile）。
+            return ProfileCompat.createProfile(uuid, profileName, parsedProperties);
         } catch (RuntimeException runtimeException) {
             LOGGER.error("Failed to parse authenticated profile for {}", fallbackUsername, runtimeException);
             return null;

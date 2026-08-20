@@ -2,6 +2,7 @@ package io.github.truscdo.mixauth.mixin;
 
 import io.github.truscdo.mixauth.AuthServerConfig;
 import io.github.truscdo.mixauth.KnownPlayerService;
+import io.github.truscdo.mixauth.compat.ProfileCompat;
 import io.github.truscdo.mixauth.offline.OfflineAuthService;
 import io.github.truscdo.mixauth.online.OnlineAuthService;
 import io.github.truscdo.mixauth.offline.PlayerIdentityService;
@@ -243,7 +244,7 @@ abstract class ServerLoginPacketListenerImplMixin {
                 return;
             }
 
-            AUTH_LOGGER.info("auth validation continuing online login for {}", profile.getName());
+            AUTH_LOGGER.info("auth validation continuing online login for {}", ProfileCompat.name(profile));
             OnlineAuthService.recordOnlineLogin(profile);
             this.auth$startClientVerification(profile);
             return;

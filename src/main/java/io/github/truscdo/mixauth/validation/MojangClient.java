@@ -2,6 +2,7 @@ package io.github.truscdo.mixauth.validation;
 
 import com.mojang.authlib.GameProfile;
 import io.github.truscdo.mixauth.AuthServerConfig;
+import io.github.truscdo.mixauth.compat.ProfileCompat;
 import io.github.truscdo.mixauth.LogUtil;
 import io.github.truscdo.mixauth.localization.AuthLocalizedText;
 import org.slf4j.Logger;
@@ -38,8 +39,22 @@ import java.util.function.Function;
  */
 public final class MojangClient {
     private static final Logger LOGGER = LogUtil.getLogger();
-    private static final String PROFILE_LOOKUP_BY_NAME_URL = "https://api.minecraftservices.com/minecraft/profile/lookup/name/";
-    private static final String HAS_JOINED_URL = "https://sessionserver.mojang.com/session/minecraft/hasJoined";
+
+    /**
+     * Mojang profile lookup URL。默认指向生产 API；测试经 JVM system property
+     * {@code mixauth.profile_lookup_url} 覆盖指向本地 mock（生产行为零变化）。
+     */
+    private static final String PROFILE_LOOKUP_BY_NAME_URL = System.getProperty(
+            "mixauth.profile_lookup_url",
+            "https://api.minecraftservices.com/minecraft/profile/lookup/name/");
+
+    /**
+     * Mojang session server hasJoined URL。默认指向生产 API；测试经 JVM system property
+     * {@code mixauth.has_joined_url} 覆盖指向本地 mock（生产行为零变化）。
+     */
+    private static final String HAS_JOINED_URL = System.getProperty(
+            "mixauth.has_joined_url",
+            "https://sessionserver.mojang.com/session/minecraft/hasJoined");
 
     /** 共享 HttpClient：连接复用，避免每次请求重建。 */
     private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
@@ -145,17 +160,17 @@ public final class MojangClient {
             }
 
             GameProfile profile = MojangProfileParser.parseGameProfile(body, username);
-            if (profile == null || profile.getId() == null) {
+            if (profile == null || ProfileCompat.uuid(profile) == null) {
                 LOGGER.warn("Mojang profile lookup returned malformed profile data for {} (HTTP 200, parse failed)",
                         username);
                 return new PreLoginCheckResult.Disconnect(
                         username, requestedProfileId,
                         AuthLocalizedText.of("auth.validation.reason.mojang_data_error"));
             }
-            if (!requestedProfileId.equals(profile.getId())) {
+            if (!requestedProfileId.equals(ProfileCompat.uuid(profile))) {
                 return new PreLoginCheckResult.Offline(username);
             }
-            String resolvedName = profile.getName();
+            String resolvedName = ProfileCompat.name(profile);
             if (resolvedName == null || !resolvedName.equalsIgnoreCase(username)) {
                 return new PreLoginCheckResult.Offline(username);
             }

@@ -13,6 +13,10 @@ import net.minecraft.world.phys.Vec3;
 
 /**
  * 待认证玩家的限制措施：旁观者模式、持续失明、位置锁定与背包伪影。
+ *
+ * <p>
+ * 位置锁定传送的版本差异（{@code ServerPlayer.teleportTo} 的 6 参重载 1.21.2 起移除、
+ * 改为 8 参）由 {@link TeleportCompat} 适配器承载，本类保持版本无关单源。
  */
 final class RestrictionApplier {
     private static final long INVENTORY_SPOOF_INTERVAL_MILLIS = 1_000L;
@@ -33,8 +37,8 @@ final class RestrictionApplier {
         ensureAuthBlindness(player);
         if (player.distanceToSqr(pendingOfflineAuth.lockedX, pendingOfflineAuth.lockedY,
                 pendingOfflineAuth.lockedZ) > LOCKED_POSITION_TOLERANCE_SQUARED) {
-            player.teleportTo(player.serverLevel(), pendingOfflineAuth.lockedX, pendingOfflineAuth.lockedY,
-                    pendingOfflineAuth.lockedZ, player.getYRot(), player.getXRot());
+            TeleportCompat.teleportBack(player, pendingOfflineAuth.lockedX, pendingOfflineAuth.lockedY,
+                    pendingOfflineAuth.lockedZ);
         }
 
         player.setDeltaMovement(Vec3.ZERO);

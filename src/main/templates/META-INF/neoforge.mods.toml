@@ -7,7 +7,7 @@ modId = "${mod_id}"
 version = "${mod_version}"
 displayName = "${mod_name}"
 description = '''
-NeoForge 1.21.1 template project.
+${mod_description}
 '''
 
 # 测试专用 mod 声明：承载测试源集内的 @Mod("mixauth_tests")（testframework 集成测试框架）。

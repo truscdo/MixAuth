@@ -1,6 +1,7 @@
 package io.github.truscdo.mixauth.offline;
 
 import com.mojang.authlib.GameProfile;
+import io.github.truscdo.mixauth.compat.ProfileCompat;
 import net.minecraft.core.UUIDUtil;
 
 import java.util.UUID;
@@ -22,6 +23,6 @@ public final class PlayerIdentityService {
             throw new IllegalArgumentException("Missing username for server-generated offline UUID");
         }
 
-        return UUIDUtil.createOfflineProfile(username).getId();
+        return ProfileCompat.uuid(UUIDUtil.createOfflineProfile(username));
     }
 }

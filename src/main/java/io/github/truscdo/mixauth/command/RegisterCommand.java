@@ -3,6 +3,7 @@ package io.github.truscdo.mixauth.command;
 import com.mojang.brigadier.Command;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
+import io.github.truscdo.mixauth.compat.ProfileCompat;
 import io.github.truscdo.mixauth.offline.OfflineAuthService;
 import io.github.truscdo.mixauth.offline.OfflineAuthSessionService;
 import io.github.truscdo.mixauth.localization.AuthTranslations;
@@ -39,7 +40,7 @@ public final class RegisterCommand {
             return 0;
         }
 
-        UUID playerUuid = player.getGameProfile().getId();
+        UUID playerUuid = ProfileCompat.uuid(player.getGameProfile());
         OfflineAuthSessionService.PendingOfflineAuth pendingOfflineAuth = OfflineAuthSessionService
                 .getPendingAuth(player);
 

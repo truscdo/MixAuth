@@ -1,13 +1,16 @@
 ### Build outputs and generated runtime files
-.gradle/
-build/
-out/
-bin/
-run/
-repo/
+/build
+/out
+/dist
+/bin
+/run
+/run-gametest
+/run-login
+/testutil/mock-sessionserver/mock.log
 
 /.vscode
 /.eclipse
+/.gradle
 
 /temp
-/run-gametest
+/.markdownlint.json
