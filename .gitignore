@@ -6,7 +6,6 @@
 /run
 /run-gametest
 /run-login
-/testutil/mock-sessionserver/mock.log
 
 /.vscode
 /.eclipse

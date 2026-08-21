@@ -1,3 +1,5 @@
+package io.github.truscdo.mixauth.loginchain.testmock;
+
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 
@@ -11,43 +13,37 @@ import java.util.Map;
 import java.util.concurrent.Executors;
 
 /**
- * Mock Mojang sessionserver (test-only, no third-party deps).
+ * 模拟 Mojang sessionserver（仅供测试使用，无第三方依赖）。
  *
  * <p>
- * Simulates the two endpoints MixAuth calls:
+ * 模拟 MixAuth 调用的两个端点：
  * <ul>
- * <li>{@code GET /minecraft/profile/lookup/name/{name}} — pre-login profile
- * check</li>
+ * <li>{@code GET /minecraft/profile/lookup/name/{name}} — 登录前 profile 预检</li>
  * <li>{@code GET /session/minecraft/hasJoined?username=...&amp;serverId=...} —
- * online session validation</li>
+ * 在线会话校验</li>
  * </ul>
  *
  * <p>
- * Response behaviour is configured with command-line flags so each test
- * scenario
- * (online handshake / 404 / 429 / 5xx / malformed / empty-properties) can be
- * reproduced.
- * The "online" profile includes a NON-EMPTY {@code properties} array (real
- * Mojang returns
- * a textures entry), which is required to reproduce the authlib 7.0.61
- * immutable-PropertyMap
- * regression on 1.21.11.
+ * 通过命令行参数配置各端点的响应行为，以复现不同测试场景（正常 / 404 /
+ * 429 / 5xx / 畸形 / 空 properties 等）。"online" 模式的 profile 携带非空
+ * {@code properties} 数组（真实 Mojang 会返回 textures 条目），这是触发
+ * 1.21.11 authlib 不可变 PropertyMap 回归所必需的。
  *
  * <p>
- * Run with JDK single-file source launcher (no compile step):
- * 
+ * 可用单文件源码直接启动（无需先编译）：
+ *
  * <pre>
  *   java MockSessionServer.java --port 8080 --profile-mode online --hasjoined-mode online
  * </pre>
  *
  * <p>
- * Flag reference:
- * 
+ * 参数说明：
+ *
  * <pre>
- *   --port PORT             listen port (default 8080)
- *   --profile-mode MODE     online | 404 | 429 | 500 | malformed | empty   (default online)
- *   --hasjoined-mode MODE   online | 404 | 500 | malformed                (default online)
- *   --profile-uuid UUID     profile UUID to return (default 00000000-0000-0000-0000-000000000001)
+ *   --port PORT            监听端口（默认 8080）
+ *   --profile-mode MODE    online | 404 | 429 | 500 | malformed | empty   （默认 online）
+ *   --hasjoined-mode MODE  online | 404 | 500 | malformed                （默认 online）
+ *   --profile-uuid UUID    返回的 profile UUID（默认 00000000-0000-0000-0000-000000000001）
  * </pre>
  */
 public final class MockSessionServer {
@@ -90,7 +86,7 @@ public final class MockSessionServer {
                 + " uuid=" + profileUuid);
     }
 
-    // ---- profile lookup: /minecraft/profile/lookup/name/{name} ----
+    // ---- profile 预检：/minecraft/profile/lookup/name/{name} ----
 
     private void handleProfileLookup(HttpExchange exchange) throws IOException {
         String path = exchange.getRequestURI().getPath();
@@ -108,7 +104,7 @@ public final class MockSessionServer {
         }
     }
 
-    // ---- hasJoined: /session/minecraft/hasJoined?username=...&serverId=... ----
+    // ---- 在线会话校验：/session/minecraft/hasJoined?username=...&serverId=... ----
 
     private void handleHasJoined(HttpExchange exchange) throws IOException {
         Map<String, String> query = parseQuery(exchange.getRequestURI().getRawQuery());
@@ -130,7 +126,7 @@ public final class MockSessionServer {
         send(exchange, 404, "{\"error\":\"not found\"}");
     }
 
-    // ---- runtime control: /_mock/mode?profile=...&hasjoined=... ----
+    // ---- 运行期控制：/_mock/mode?profile=...&hasjoined=... ----
 
     private void handleControl(HttpExchange exchange) throws IOException {
         String path = exchange.getRequestURI().getPath();
@@ -151,9 +147,9 @@ public final class MockSessionServer {
                 + "\",\"hasjoined\":\"" + hasJoinedMode + "\"}");
     }
 
-    // ---- helpers ----
+    // ---- 工具方法 ----
 
-    /** Real-Mojang-style profile JSON with a non-empty properties array. */
+    /** 生成形如真实 Mojang 的 profile JSON（properties 数组非空）。 */
     private String profileJson(String uuid, String name) {
         return "{\"id\":\"" + noDashes(uuid)
                 + "\",\"name\":\"" + name

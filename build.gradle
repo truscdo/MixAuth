@@ -193,6 +193,57 @@ dependencies {
     }
 }
 
+sourceSets {
+    integrationTest {
+        compileClasspath += sourceSets.main.output
+        runtimeClasspath += sourceSets.main.output
+    }
+}
+
+dependencies {
+    integrationTestImplementation 'org.junit.jupiter:junit-jupiter:5.11.0'
+    integrationTestRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+def integrationTest = tasks.register('integrationTest', Test) {
+    description = 'Run L2/L3 login-chain integration tests against a NeoForge server'
+    group = 'verification'
+    testClassesDirs = sourceSets.integrationTest.output.classesDirs
+    classpath = sourceSets.integrationTest.runtimeClasspath
+    def lctLayer = (project.findProperty('lct.layer') ?: System.getenv('LCT_LAYER') ?: 'all') as String
+    useJUnitPlatform {
+        if (lctLayer == 'all') {
+            includeTags 'online', 'offline'
+        } else {
+            includeTags lctLayer
+        }
+    }
+
+    systemProperty 'lct.mc', project.minecraft_version
+    systemProperty 'lct.neo', project.neo_version
+    systemProperty 'lct.parchmentMc', project.parchment_minecraft_version
+    systemProperty 'lct.parchmentMap', project.parchment_mappings_version
+    systemProperty 'lct.mcRange', project.minecraft_version_range
+    systemProperty 'lct.runDir', "${rootDir}/run-login/${project.minecraft_version}".toString()
+    systemProperty 'lct.buildDir', layout.buildDirectory.get().asFile.absolutePath
+    systemProperty 'lct.mccExe', System.getenv('MCC_EXE') ?: ''
+    systemProperty 'lct.cleanBuild', System.getenv('L3_CLEAN_BUILD') ?: 'true'
+
+    maxParallelForks = 1
+    forkEvery = 1
+    timeout = Duration.ofMinutes(20)
+
+    reports.html.outputLocation.set(layout.buildDirectory.dir("reports/integrationTest"))
+    reports.junitXml.outputLocation.set(layout.buildDirectory.dir("test-results/integrationTest"))
+
+    jvmArgs '-Dfile.encoding=UTF-8'
+    testLogging {
+        events 'passed', 'skipped', 'failed'
+    }
+
+    shouldRunAfter test
+}
+
 var generateModMetadata = tasks.register('generateModMetadata', ProcessResources) {
     var replaceProperties = [
             minecraft_version      : minecraft_version,
