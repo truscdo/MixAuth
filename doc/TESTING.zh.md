@@ -85,7 +85,7 @@ gradlew.bat runGameTestServer
 ### 真实服务器运行方式
 
 ```bat
-run-login-it.bat                          REM 默认两层全跑，全 4 版本（1.21.1/1.21.5/1.21.8/1.21.11）
+run-login-it.bat                          REM 默认两层全跑，全 6 版本（1.21.1/1.21.5/1.21.8/1.21.11/26.1/26.2）
 run-login-it.bat --online                 REM 仅在线预检
 run-login-it.bat --offline                REM 仅离线链
 run-login-it.bat 1.21.5                   REM 单版本
@@ -99,7 +99,7 @@ gradlew.bat integrationTest -Plct.layer=online -Pminecraft_version=1.21.5 ^
 ### 说明
 
 - **生命周期由 JUnit 管理**：`@BeforeAll` 起 mock + 服务器（devlaunch 直启，注入 mock URL 与 `-Dfml.modFolders`）→ 场景内 MCC 双通道断言 → `@AfterAll` RCON 停服 + jstack 采样 + 兜底强杀；失败自动归档日志。
-- 默认端口：游戏 `25565` / RCON `25575` / mock `18080`（可用 `MCC_EXE`、`MCC_DIR`、`RCON_PW`、`JDK_EXE`/`JAVA_HOME` 等覆盖）。
+- 默认端口：游戏 `25565` / RCON `25575` / mock `18080`（可用 `MCC_EXE`、`MCC_DIR`、`RCON_PW`、`JAVA_HOME` 等覆盖；测试子进程的 java/jcmd 由 `LctConfig` 从 `JAVA_HOME` 自动解析）。
 - **唯一外部依赖是 MCC 二进制**（`MCC_EXE`/`MCC_DIR`），缺失时整层 **skip 而非失败**。
 - 报告：`build/reports/integrationTest/`（HTML）、`build/test-results/integrationTest/`（XML）；失败归档：`build/reports/integrationTest/artifacts/<场景>/`。
 - 统一入口为 `run-login-it.bat`（历史自研编排器已删除，git 可找回）。
@@ -114,6 +114,12 @@ gradlew.bat integrationTest -Plct.layer=online -Pminecraft_version=1.21.5 ^
 | 1.21.5 | `1.21.5` | `21.5.98` |
 | 1.21.8 | `1.21.8` | `21.8.54` |
 | 1.21.11 | `1.21.11` | `21.11.45` |
+| 26.1 | `26.1` | `26.1.2.71` |
+| 26.2 | `26.2` | `26.2.0.67` |
+
+> 26.1 起无需 Parchment（官方参数名可用），`-Pparchment_*` 传占位符 `-`；
+> 26.1/26.2 需 JDK 25，`run-login-it.bat` / `build-matrix.bat` 自动解析：
+> `JDK25_HOME` 环境变量优先，其次 `JAVA_HOME`（须为 25），再自动探测常见安装位置。
 
 ---
 

@@ -32,12 +32,24 @@ if (project.minecraft_version == '1.21.0' || project.minecraft_version == '1.21.
         element.name == 'TeleportCompat.java'
                 && element.file.absolutePath.replace('\\', '/').contains('/src/main/java/')
     }
-    if (project.minecraft_version == '1.21.11') {
+    if (project.minecraft_version == '1.21.11' || project.minecraft_version == '26.1'
+            || project.minecraft_version == '26.2') {
         // 1.21.11 权限系统重构 + authlib GameProfile record 化：叠加第三源集承载
         // PermissionCompat / ProfileCompat 覆盖实现，并排除主目录基础版（避免重复类）
+        // 26.1 / 26.2 复用同一覆盖实现
         sourceSets.main.java.srcDir 'src/neo-1.21.11/java'
         sourceSets.main.java.exclude { element ->
             (element.name == 'PermissionCompat.java' || element.name == 'ProfileCompat.java')
+                    && element.file.absolutePath.replace('\\', '/').contains('/src/main/java/')
+        }
+    }
+    if (project.minecraft_version == '26.2') {
+        // 26.2 移除 PlayerInteractEvent.EntityInteractSpecific（interactAt 合并进
+        // EntityInteract）：叠加第四源集承载 EntityInteractCompat 空实现，
+        // 并排除主目录基础版（避免重复类）
+        sourceSets.main.java.srcDir 'src/neo-26.2/java'
+        sourceSets.main.java.exclude { element ->
+            element.name == 'EntityInteractCompat.java'
                     && element.file.absolutePath.replace('\\', '/').contains('/src/main/java/')
         }
     }
@@ -56,14 +68,22 @@ base {
     archivesName = "${mod_id}-${minecraft_version}"
 }
 
-java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+// 26.1 起 Minecraft 使用 Java 25；既有 1.21.x 线保持 Java 21
+if (project.minecraft_version == '26.1' || project.minecraft_version == '26.2') {
+    java.toolchain.languageVersion = JavaLanguageVersion.of(25)
+} else {
+    java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+}
 
 neoForge {
     version = project.neo_version
 
-    parchment {
-        mappingsVersion = project.parchment_mappings_version
-        minecraftVersion = project.parchment_minecraft_version
+    // 26.1 起 Mojang 移除混淆，官方参数名直接可用，Parchment 不再必需
+    if (project.minecraft_version != '26.1' && project.minecraft_version != '26.2') {
+        parchment {
+            mappingsVersion = project.parchment_mappings_version
+            minecraftVersion = project.parchment_minecraft_version
+        }
     }
 
     runs {
@@ -172,8 +192,9 @@ dependencies {
         }
     }
     // additionalRuntimeClasspath 配置 1.21.11 起被 moddev 移除（构建报错提示），
-    // 该配置仅用于 dev 运行时 classpath；1.21.11 改用标准 runtimeOnly。
-    if (project.minecraft_version == '1.21.11') {
+    // 该配置仅用于 dev 运行时 classpath；1.21.11 起改用标准 runtimeOnly（26.1/26.2 同）。
+    if (project.minecraft_version == '1.21.11' || project.minecraft_version == '26.1'
+            || project.minecraft_version == '26.2') {
         runtimeOnly 'at.favre.lib:bcrypt:0.10.2'
         runtimeOnly 'at.favre.lib:bytes:1.5.0'
     } else {
@@ -186,7 +207,8 @@ dependencies {
             prefer '2.4.240'
         }
     })
-    if (project.minecraft_version == '1.21.11') {
+    if (project.minecraft_version == '1.21.11' || project.minecraft_version == '26.1'
+            || project.minecraft_version == '26.2') {
         runtimeOnly 'com.h2database:h2:2.4.240'
     } else {
         additionalRuntimeClasspath 'com.h2database:h2:2.4.240'

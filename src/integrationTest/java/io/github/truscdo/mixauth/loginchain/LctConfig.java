@@ -2,10 +2,15 @@
 // 登录链集成测试的集中配置。
 //
 // 配置值优先取 Gradle 注入的系统属性（lct.*），其次可由环境变量覆盖
-// （MCC_EXE、MCC_DIR、JDK_EXE、JAVA_HOME、RCON_PW、RCON_PORT、SPORT、MOCK_PORT），
+// （MCC_EXE、MCC_DIR、JAVA_HOME、RCON_PW、RCON_PORT、SPORT、MOCK_PORT），
 // 最后回退到各字段的内置默认值。
 //
-// 版本目录固定支持 4 个版本：1.21.1 / 1.21.5 / 1.21.8 / 1.21.11。
+// JDK 解析：JAVA_HOME 优先（run-login-it.bat 已按版本设置），其次 JDK_EXE
+// （IDE 直跑时的可选覆盖），最后 PATH。
+//
+// 版本目录固定支持 6 个版本：1.21.1 / 1.21.5 / 1.21.8 / 1.21.11 / 26.1 / 26.2。
+// 26.1 起无需 Parchment（官方参数名可用），parchment 字段传占位符 "-"，
+// build.gradle 的 26.1/26.2 分支不读取；此处仅用于 IDE 直跑测试时的目录回退。
 // ============================================================================
 package io.github.truscdo.mixauth.loginchain;
 
@@ -15,7 +20,7 @@ import java.util.Map;
 
 public final class LctConfig {
 
-    // ---- 支持的版本目录（4 个版本）----
+    // ---- 支持的版本目录（6 个版本）----
     public record Version(String neo, String parchmentMc, String parchmentMap, String mcRange) {
     }
 
@@ -23,7 +28,9 @@ public final class LctConfig {
             "1.21.1", new Version("21.1.1", "1.21.1", "2024.11.17", "[1.21.1]"),
             "1.21.5", new Version("21.5.98", "1.21.5", "2025.06.15", "[1.21.5]"),
             "1.21.8", new Version("21.8.54", "1.21.8", "2025.09.14", "[1.21.8]"),
-            "1.21.11", new Version("21.11.45", "1.21.11", "2025.12.20", "[1.21.11]"));
+            "1.21.11", new Version("21.11.45", "1.21.11", "2025.12.20", "[1.21.11]"),
+            "26.1", new Version("26.1.2.71", "-", "-", "[26.1, 26.2)"),
+            "26.2", new Version("26.2.0.67", "-", "-", "[26.2, 26.3)"));
 
     public static final Path PROJECT = Path.of(System.getProperty("user.dir")).toAbsolutePath().normalize();
     public static final boolean IS_WINDOWS = System.getProperty("os.name", "").toLowerCase().contains("win");
@@ -62,14 +69,14 @@ public final class LctConfig {
     public static final int SPORT = envOrInt("SPORT", 25565);
     public static final int MOCK_PORT = envOrInt("MOCK_PORT", 18080);
 
-    // ---- JDK 解析：JDK_EXE 优先，其次 JAVA_HOME，最后 PATH ----
+    // ---- JDK 解析：JAVA_HOME 优先（run-login-it.bat 已按版本设置），
+    // 其次 PATH ----
     public static final String JAVA_BIN;
     public static final String JCMD_BIN;
 
     static {
-        String jdk = System.getenv("JDK_EXE");
-        if ((jdk == null || jdk.isEmpty()) && System.getenv("JAVA_HOME") != null
-                && !System.getenv("JAVA_HOME").isEmpty()) {
+        String jdk = null;
+        if (System.getenv("JAVA_HOME") != null && !System.getenv("JAVA_HOME").isEmpty()) {
             Path jh = Path.of(System.getenv("JAVA_HOME"));
             Path j = jh.resolve(IS_WINDOWS ? "bin\\java.exe" : "bin/java");
             if (Files.exists(j))
