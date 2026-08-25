@@ -14,8 +14,11 @@
 // ============================================================================
 package io.github.truscdo.mixauth.loginchain;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 public final class LctConfig {
@@ -24,15 +27,29 @@ public final class LctConfig {
     public record Version(String neo, String parchmentMc, String parchmentMap, String mcRange) {
     }
 
-    public static final Map<String, Version> VERSIONS = Map.of(
-            "1.21.1", new Version("21.1.1", "1.21.1", "2024.11.17", "[1.21.1]"),
-            "1.21.5", new Version("21.5.98", "1.21.5", "2025.06.15", "[1.21.5]"),
-            "1.21.8", new Version("21.8.54", "1.21.8", "2025.09.14", "[1.21.8]"),
-            "1.21.11", new Version("21.11.45", "1.21.11", "2025.12.20", "[1.21.11]"),
-            "26.1", new Version("26.1.2.71", "-", "-", "[26.1, 26.2)"),
-            "26.2", new Version("26.2.0.67", "-", "-", "[26.2, 26.3)"));
-
     public static final Path PROJECT = Path.of(System.getProperty("user.dir")).toAbsolutePath().normalize();
+
+    /** 版本矩阵单一数据源：项目根 version-matrix.txt（与 build-matrix.bat / run-login-it.* 共享）。 */
+    public static final Map<String, Version> VERSIONS = loadVersions();
+
+    private static Map<String, Version> loadVersions() {
+        Map<String, Version> m = new LinkedHashMap<>();
+        try {
+            for (String line : Files.readAllLines(PROJECT.resolve("version-matrix.txt"))) {
+                line = line.trim();
+                if (line.isEmpty() || line.startsWith("#"))
+                    continue;
+                String[] p = line.split("\\|", -1);
+                if (p.length != 5)
+                    continue;
+                m.put(p[0], new Version(p[1], p[2], p[3], p[4]));
+            }
+        } catch (IOException e) {
+            throw new UncheckedIOException("无法读取版本矩阵 version-matrix.txt（cwd=" + PROJECT + "）", e);
+        }
+        return Map.copyOf(m);
+    }
+
     public static final boolean IS_WINDOWS = System.getProperty("os.name", "").toLowerCase().contains("win");
 
     // ---- 实际使用的版本：优先取 lct.* 系统属性，缺失时回退到目录 ----

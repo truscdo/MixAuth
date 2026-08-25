@@ -99,7 +99,7 @@ it() {
 
   # 26.1 起 Minecraft 使用 Java 25，Gradle 守护进程须以 JDK 25 运行；
   # 其余版本沿用系统默认 JDK（21）。
-  if [[ "$mc" == "26.1" || "$mc" == "26.2" ]]; then
+  if [[ "$mc" == "26.1.2" || "$mc" == "26.2" ]]; then
     resolve_jdk25
     export JAVA_HOME="$JDK25"
   else
@@ -120,11 +120,9 @@ it() {
   echo "=== DONE $mc ==="
 }
 
-it 1.21.1 21.1.1 1.21.1 2024.11.17 "[1.21.1]"
-it 1.21.5 21.5.98 1.21.5 2025.06.15 "[1.21.5]"
-it 1.21.8 21.8.54 1.21.8 2025.09.14 "[1.21.8]"
-it 1.21.11 21.11.45 1.21.11 2025.12.20 "[1.21.11]"
-# 26.1：最低稳定 NeoForge 26.1.2.71；无需 Parchment（传占位符 "-"）。
-it 26.1 26.1.2.71 - - "[26.1, 26.2)"
-# 26.2：最新稳定线 26.2.0.67；同 26.1 无需 Parchment。
-it 26.2 26.2.0.67 - - "[26.2, 26.3)"
+# 版本矩阵单一数据源：version-matrix.txt（mc|neo|parchmentMc|parchmentMap|mcRange）
+while IFS='|' read -r mc neo pmc pmap mrange || [[ -n "$mc" ]]; do
+  mrange="${mrange%$'\r'}"
+  [[ "$mc" == \#* || -z "$mc" ]] && continue
+  it "$mc" "$neo" "$pmc" "$pmap" "$mrange"
+done < version-matrix.txt

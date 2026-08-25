@@ -85,7 +85,7 @@ gradlew.bat runGameTestServer
 ### 真实服务器运行方式
 
 ```bat
-run-login-it.bat                          REM 默认两层全跑，全 6 版本（1.21.1/1.21.5/1.21.8/1.21.11/26.1/26.2）
+run-login-it.bat                          REM 默认两层全跑，全 6 版本（1.21.1/1.21.5/1.21.8/1.21.11/26.1.2/26.2）
 run-login-it.bat --online                 REM 仅在线预检
 run-login-it.bat --offline                REM 仅离线链
 run-login-it.bat 1.21.5                   REM 单版本
@@ -114,12 +114,13 @@ gradlew.bat integrationTest -Plct.layer=online -Pminecraft_version=1.21.5 ^
 | 1.21.5 | `1.21.5` | `21.5.98` |
 | 1.21.8 | `1.21.8` | `21.8.54` |
 | 1.21.11 | `1.21.11` | `21.11.45` |
-| 26.1 | `26.1` | `26.1.2.71` |
-| 26.2 | `26.2` | `26.2.0.67` |
+| 26.1.2 | `26.1.2` | `26.1.2.71` |
+| 26.2 | `26.2` | `26.2.0.57` |
 
 > 26.1 起无需 Parchment（官方参数名可用），`-Pparchment_*` 传占位符 `-`；
-> 26.1/26.2 需 JDK 25，`run-login-it.bat` / `build-matrix.bat` 自动解析：
+> 26.1.2/26.2 需 JDK 25，`run-login-it.bat` / `build-matrix.bat` 自动解析：
 > `JDK25_HOME` 环境变量优先，其次 `JAVA_HOME`（须为 25），再自动探测常见安装位置。
+> 版本矩阵以根目录 `version-matrix.txt` 为单一数据源（`build-matrix.bat` / `run-login-it.bat` / `run-login-it.sh` / `LctConfig.java` 均从此读取）。
 
 ---
 

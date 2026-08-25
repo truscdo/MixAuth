@@ -18,15 +18,10 @@ call :load-env
 
 set "ONLY=%~1"
 
-call :build 1.21.1 21.1.1 1.21.1 2024.11.17 "[1.21.1]"
-call :build 1.21.5 21.5.98 1.21.5 2025.06.15 "[1.21.5]"
-call :build 1.21.8 21.8.54 1.21.8 2025.09.14 "[1.21.8]"
-call :build 1.21.11 21.11.45 1.21.11 2025.12.20 "[1.21.11, 1.22)"
-rem 26.1：最低稳定 NeoForge 26.1.2.71；26.1 起无需 Parchment（官方参数名可用），
-rem 故 parchment 参数传占位符 "-"（build.gradle 的 26.1 分支不读取）。
-call :build 26.1 26.1.2.71 - - "[26.1, 26.2)"
-rem 26.2：最新稳定线 26.2.0.67；同 26.1 无需 Parchment。
-call :build 26.2 26.2.0.67 - - "[26.2, 26.3)"
+rem 版本矩阵单一数据源：version-matrix.txt（mc|neo|parchmentMc|parchmentMap|mcRange）
+for /f "usebackq eol=# tokens=1-5 delims=|" %%a in ("%~dp0version-matrix.txt") do (
+  call :build %%a %%b %%c %%d "%%e"
+)
 goto :eof
 
 :build
@@ -36,7 +31,7 @@ goto :eof
   rem 26.1 起 Minecraft 使用 Java 25，Gradle 守护进程须以 JDK 25 运行
   rem （JDK 21 守护进程下载 NeoForge Maven 依赖时 TLS 握手失败）；
   rem 其余版本沿用系统默认 JDK（21）。
-  if "%~1"=="26.1" (
+  if "%~1"=="26.1.2" (
     call :resolve-jdk25
     set "JAVA_HOME=%JDK25%"
   ) else if "%~1"=="26.2" (
