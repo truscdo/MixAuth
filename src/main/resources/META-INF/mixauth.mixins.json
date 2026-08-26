@@ -3,7 +3,6 @@
     "minVersion": "0.8",
     "package": "io.github.truscdo.mixauth.mixin",
     "compatibilityLevel": "JAVA_21",
-    "refmap": "mixauth.refmap.json",
     "mixins": [
         "ServerLoginPacketListenerImplMixin"
     ],
