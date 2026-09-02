@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="1254" height="1254" viewBox="0 0 1254 1254"
+     role="img" aria-labelledby="title desc">
+  <title id="title">Directional flow logo</title>
+  <desc id="desc">A red vertical bar crossed by a cyan right arrow and a segmented gray right arrow over a circular gray radial-gradient background.</desc>
+
+  <defs>
+    <radialGradient id="grayCircleGradient"
+                    gradientUnits="userSpaceOnUse"
+                    cx="627" cy="627" r="1000">
+      <stop offset="0%" stop-color="#4B4B4B"/>
+      <stop offset="20%" stop-color="#474747"/>
+      <stop offset="42%" stop-color="#3D3D3D"/>
+      <stop offset="64%" stop-color="#323232"/>
+      <stop offset="82%" stop-color="#282828"/>
+      <stop offset="94%" stop-color="#1E1E1E"/>
+      <stop offset="100%" stop-color="#181818"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Square dark-gray background. -->
+  <rect width="1254" height="1254" fill="#181818"/>
+
+  <!-- Circular light-gray area fading into the square background. -->
+  <circle cx="627" cy="627" r="1000" fill="url(#grayCircleGradient)"/>
+
+  <!-- Keep the logo centered and emphasize line width. -->
+  <g transform="translate(627 627) scale(1) translate(-627 -627)">
+    <!-- Vertical red divider, behind the horizontal arrows -->
+    <path d="M627 192 V1062"
+          fill="none" stroke="#730C00" stroke-width="68"
+          stroke-linecap="round"/>
+    <path d="M627 192 V1062"
+          fill="none" stroke="#E62008" stroke-width="46"
+          stroke-linecap="round"/>
+
+    <!-- Lower segmented gray arrow -->
+    <path d="M194 784 H546"
+          fill="none" stroke="#525252" stroke-width="68"
+          stroke-linecap="round"/>
+    <path d="M194 784 H546"
+          fill="none" stroke="#888788" stroke-width="46"
+          stroke-linecap="round"/>
+
+    <path d="M711 784 H1064 M1064 784 L1004 712 M1064 784 L1004 856"
+          fill="none" stroke="#525252" stroke-width="68"
+          stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M711 784 H1064 M1064 784 L1004 712 M1064 784 L1004 856"
+          fill="none" stroke="#888788" stroke-width="46"
+          stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- Upper cyan arrow, in front of the red divider -->
+    <path d="M194 540 H1064 M1064 540 L1004 468 M1064 540 L1004 612"
+          fill="none" stroke="#0EBABD" stroke-width="68"
+          stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M194 540 H1064 M1064 540 L1004 468 M1064 540 L1004 612"
+          fill="none" stroke="#65F5E3" stroke-width="46"
+          stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>
