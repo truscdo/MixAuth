@@ -1,38 +1,11 @@
 @echo off
-rem ============================================================
-rem MixAuth 登录链集成测试聚合脚本
-rem   默认同时运行离线注册/登录链与在线预检两层（全 4 个版本）
-rem
-rem 用法：
-rem   run-login-it.bat                 两层全跑，全 4 个版本
-rem   run-login-it.bat --offline       仅离线注册/登录链
-rem   run-login-it.bat --online        仅在线预检（需要本地 mock sessionserver）
-rem   run-login-it.bat 1.21.5          仅指定版本
-rem   run-login-it.bat 1.21.5 --offline --tests "*S4*"   额外参数透传给 gradlew integrationTest
-rem
-rem 环境变量：
-rem   MCC_EXE / MCC_DIR   MCC 无头客户端二进制（缺失时在线预检层整体跳过，不报红）
-rem   RCON_PW / RCON_PORT / SPORT / MOCK_PORT / JAVA_HOME
-rem   JDK25_HOME / JDK21_HOME   JDK 路径（26.1 自动切 JDK 25，见 :resolve-jdk25）
-rem
-rem 说明：
-rem   - 本任务未接入 `check`，作为发布/CI 的独立守门。
-rem   - 切换版本前先清理 build/classes、build/libs、build/resources：
-rem     Gradle 配置缓存按属性「名称」而非「值」判断 up-to-date，版本切换可能误判。
-rem     随后把 L3_CLEAN_BUILD 置为 false，避免测试内部对同一版本重复编译。
-rem   - 报告：build/reports/integrationTest、build/test-results/integrationTest；
-rem     失败归档：build/reports/integrationTest/artifacts/<场景>/。
-rem ============================================================
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
 chcp 65001 >nul
 
-rem 加载 .env（若存在）：JDK25_HOME / MCC_DIR 等机器特定配置集中于此
 call :load-env
 
 set "ONLY=%~1"
-rem 解析层级参数：默认两层全跑；--offline / --online 只跑其中一层；
-rem 其余参数（版本过滤之外的）原样透传给 gradlew。
 set "LAYER=all"
 set "EXTRA_ARGS="
 set "IDX=0"
@@ -42,7 +15,6 @@ for %%A in (%*) do (
     if /i "%%A"=="--offline" ( set "LAYER=offline" ) else if /i "%%A"=="--online" ( set "LAYER=online" ) else ( set "EXTRA_ARGS=!EXTRA_ARGS! %%A" )
   )
 )
-rem 按层级设置 JUnit tag 过滤参数；用户额外传入的 --tests 仍会透传。
 set "TEST_FILTERS="
 if "%LAYER%"=="offline" (
   set "TEST_FILTERS=-Plct.layer=offline"
@@ -52,7 +24,6 @@ if "%LAYER%"=="offline" (
   set "TEST_FILTERS=-Plct.layer=all"
 )
 
-rem 版本矩阵单一数据源：version-matrix.txt（mc|neo|parchmentMc|parchmentMap|mcRange）
 for /f "usebackq eol=# tokens=1-5 delims=|" %%a in ("%~dp0version-matrix.txt") do (
   call :it %%a %%b %%c %%d "%%e"
 )
@@ -61,8 +32,6 @@ goto :eof
 :it
   if not "%ONLY%"=="" if not "%ONLY%"=="%~1" goto :eof
 
-  rem 26.1 起 Minecraft 使用 Java 25，Gradle 守护进程须以 JDK 25 运行；
-  rem 其余版本沿用系统默认 JDK（21）。
   if "%~1"=="26.1.2" (
     call :resolve-jdk25
     set "JAVA_HOME=%JDK25%"
@@ -96,11 +65,6 @@ goto :eof
   goto :eof
 
 :resolve-jdk25
-  rem 解析 JDK 25 安装路径（不硬编码任何机器特定目录）：
-  rem   1) JDK25_HOME 环境变量（推荐，如 set JDK25_HOME=C:\path\to\jdk-25）
-  rem   2) JAVA_HOME（若其 release 文件声明 Java 25）
-  rem   3) 常见安装位置自动探测（Program Files / LocalAppData 下的 jdk-25*）
-  rem   4) 均未找到 → 报错退出
   set "JDK25="
   if defined JDK25_HOME if exist "%JDK25_HOME%\bin\java.exe" set "JDK25=%JDK25_HOME%"
   if not defined JDK25 if defined JAVA_HOME if exist "%JAVA_HOME%\bin\java.exe" (
@@ -119,8 +83,6 @@ goto :eof
   goto :eof
 
 :load-env
-  rem 加载项目根目录 .env（若存在）：每行 KEY=VALUE，# 开头为注释。
-  rem 已定义的环境变量优先，.env 仅填充缺失项（系统级/命令行设置优先）。
   if not exist ".env" goto :eof
   for /f "usebackq eol=# tokens=1,* delims==" %%A in (".env") do (
     if not defined %%A set "%%A=%%B"

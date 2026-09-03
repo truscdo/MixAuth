@@ -21,6 +21,7 @@ public final class MockServerManager {
     private boolean started;
 
     public boolean start() throws IOException {
+        cleanupStaleMock();
         Processes.log("=== start mock sessionserver ===");
         // mock 位于 integrationTest 源集，直接用本测试 JVM 的 classpath
         // 在子 JVM 中启动其主类。
@@ -50,6 +51,34 @@ public final class MockServerManager {
         return true;
     }
 
+    private void cleanupStaleMock() {
+        Path pidFile = LoginChainRunDir.runDir().resolve("mock.pid");
+        try {
+            if (Files.exists(pidFile)) {
+                String pidText = Files.readString(pidFile, StandardCharsets.US_ASCII).trim();
+                if (!pidText.isEmpty()) {
+                    long pid = Long.parseLong(pidText);
+                    ProcessHandle.of(pid).ifPresent(handle -> {
+                        String commandLine = handle.info().commandLine().orElse("");
+                        if (commandLine.contains("MockSessionServer")) {
+                            Processes.log("  stopping stale mock process " + pid);
+                            handle.destroy();
+                            for (int i = 0; i < 20 && handle.isAlive(); i++) {
+                                Processes.sleepMs(100);
+                            }
+                            if (handle.isAlive()) {
+                                handle.destroyForcibly();
+                            }
+                        }
+                    });
+                }
+                Files.deleteIfExists(pidFile);
+            }
+        } catch (Exception e) {
+            Processes.log("  stale mock cleanup skipped: " + e.getMessage());
+        }
+    }
+
     public void stop() {
         if (!started) {
             Processes.log("  stop mock: not started, skip");
@@ -63,6 +92,10 @@ public final class MockServerManager {
                 if (!pid.isEmpty())
                     ProcessHandle.of(Long.parseLong(pid)).ifPresent(ProcessHandle::destroyForcibly);
             }
+        } catch (IOException ignored) {
+        }
+        try {
+            Files.deleteIfExists(LoginChainRunDir.runDir().resolve("mock.pid"));
         } catch (IOException ignored) {
         }
         started = false;

@@ -187,15 +187,6 @@ public final class AuthStore {
         DirectDb.submitWrite(() -> KnownPlayerDao.saveKnownPlayer(uuid, name, mode.name()));
     }
 
-    /** 非关键写（known_players）：管理员强制设置登录模式（无减写）。 */
-    public static void setLoginMode(UUID uuid, String name, OnlineAuthService.LoginMode mode) {
-        if (uuid == null || mode == null) {
-            return;
-        }
-        AuthCache.putKnown(uuid, name, mode);
-        DirectDb.submitWrite(() -> KnownPlayerDao.saveKnownPlayer(uuid, name, mode.name()));
-    }
-
     /** 非关键写（offline_login_blocks）：记录封禁，缓存先行。 */
     public static void recordBlock(UUID uuid, long blockedUntil) {
         if (uuid == null) {

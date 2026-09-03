@@ -213,7 +213,7 @@ public class AuthGameTestBase extends ExtendedGameTestHelper {
     }
 
     /**
-     * 以服务器控制台身份（权限 4）执行管理员子命令（setpassword/setmode/remove 等）。
+     * 以服务器控制台身份（权限 4）执行管理员子命令（setpassword/remove 等）。
      * <p>
      * GameTest 玩家不是服务器 OP，无法通过 {@code hasPermission(3)} 校验，故管理员子命令
      * 用控制台 source 驱动（成功/失败消息发往服务器日志，测试侧只断言落库结果）。

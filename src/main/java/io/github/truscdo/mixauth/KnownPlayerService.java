@@ -5,7 +5,6 @@ import io.github.truscdo.mixauth.compat.ProfileCompat;
 import io.github.truscdo.mixauth.db.KnownPlayerDao;
 import io.github.truscdo.mixauth.online.OnlineAuthService;
 import net.minecraft.core.UUIDUtil;
-import org.slf4j.Logger;
 
 import java.util.List;
 import java.util.Map;
@@ -19,7 +18,6 @@ import java.util.concurrent.ConcurrentHashMap;
  * </p>
  */
 public final class KnownPlayerService {
-    private static final Logger LOGGER = LogUtil.getLogger();
     private static final Map<UUID, OnlineAuthService.LoginMode> LOGIN_MODES = new ConcurrentHashMap<>();
 
     private KnownPlayerService() {
@@ -67,17 +65,6 @@ public final class KnownPlayerService {
     public static void recordKnownPlayer(UUID playerUuid, String username, OnlineAuthService.LoginMode mode) {
         AuthStore.recordKnown(playerUuid, username, mode);
         markLoginMode(playerUuid, mode);
-    }
-
-    /**
-     * 管理员设置玩家登录模式（非关键写，write-behind）。
-     */
-    public static void setLoginMode(UUID playerUuid, String username, OnlineAuthService.LoginMode mode) {
-        if (playerUuid == null || mode == null) {
-            return;
-        }
-        AuthStore.setLoginMode(playerUuid, username, mode);
-        LOGGER.info("Admin set login mode for {} ({}) to {}", username, playerUuid, mode);
     }
 
     /**

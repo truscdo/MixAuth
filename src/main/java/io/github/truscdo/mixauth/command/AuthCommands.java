@@ -8,7 +8,6 @@ import com.mojang.brigadier.suggestion.Suggestions;
 import io.github.truscdo.mixauth.KnownPlayerService;
 import io.github.truscdo.mixauth.compat.ProfileCompat;
 import io.github.truscdo.mixauth.offline.OfflineAuthService;
-import io.github.truscdo.mixauth.online.OnlineAuthService;
 import io.github.truscdo.mixauth.db.KnownPlayerDao;
 import io.github.truscdo.mixauth.localization.AuthTranslations;
 import net.minecraft.commands.CommandSourceStack;
@@ -21,7 +20,7 @@ import java.util.Locale;
 import java.util.UUID;
 
 /**
- * /auth 命令：管理员子命令 setpassword / setmode / remove 与玩家自助子命令 changepassword。
+ * /auth 命令：管理员子命令 setpassword / remove 与玩家自助子命令 changepassword。
  */
 public final class AuthCommands {
     private static final SuggestionProvider<CommandSourceStack> KNOWN_PLAYERS = (context, builder) -> {
@@ -44,15 +43,6 @@ public final class AuthCommands {
                 builder.suggest(uuidStr, tooltipComponent);
             }
         }
-        return builder.buildFuture();
-    };
-
-    private static final SuggestionProvider<CommandSourceStack> LOGIN_MODES = (context, builder) -> {
-        String remaining = builder.getRemaining().toLowerCase(Locale.ROOT);
-        if ("online".startsWith(remaining))
-            builder.suggest("online");
-        if ("offline".startsWith(remaining))
-            builder.suggest("offline");
         return builder.buildFuture();
     };
 
@@ -79,16 +69,6 @@ public final class AuthCommands {
                                                         StringArgumentType.getString(context, "password"),
                                                         StringArgumentType.getString(context,
                                                                 "confirmPassword")))))))
-                .then(Commands.literal("setmode")
-                        .requires(PermissionCompat::isAdmin)
-                        .then(Commands.argument("target", StringArgumentType.word())
-                                .suggests(KNOWN_PLAYERS)
-                                .then(Commands.argument("mode", StringArgumentType.word())
-                                        .suggests(LOGIN_MODES)
-                                        .executes(context -> setPlayerMode(
-                                                context.getSource(),
-                                                StringArgumentType.getString(context, "target"),
-                                                StringArgumentType.getString(context, "mode"))))))
                 .then(Commands.literal("remove")
                         .requires(PermissionCompat::isAdmin)
                         .then(Commands.argument("target", StringArgumentType.word())
@@ -199,48 +179,6 @@ public final class AuthCommands {
     }
 
     /**
-     * /auth setmode：管理员设置玩家的登录模式（online/offline）。
-     */
-    private static int setPlayerMode(CommandSourceStack source, String target, String modeRaw) {
-        UUID playerUuid = PlayerTargetResolver.tryParseUuid(target);
-        String username = null;
-        if (playerUuid == null) {
-            playerUuid = PlayerTargetResolver.resolvePlayerUuidByUsername(source, target);
-            if (playerUuid == null) {
-                return 0;
-            }
-            username = target; // 通过用户名查到的，保留真实用户名
-        }
-        final UUID resolvedUuid = playerUuid;
-
-        OnlineAuthService.LoginMode mode = parseLoginMode(source, modeRaw);
-        if (mode == null) {
-            return 0;
-        }
-
-        try {
-            KnownPlayerService.setLoginMode(playerUuid, username, mode);
-            String modeText = AuthTranslations.textForSource(source, switch (mode) {
-                case ONLINE -> "auth.login_mode.online";
-                case OFFLINE -> "auth.login_mode.offline";
-            });
-            source.sendSuccess(() -> AuthTranslations.componentForSource(
-                    source,
-                    "auth.command.mode.set.success",
-                    target,
-                    resolvedUuid,
-                    modeText), true);
-            return Command.SINGLE_SUCCESS;
-        } catch (RuntimeException runtimeException) {
-            source.sendFailure(AuthTranslations.componentForSource(
-                    source,
-                    "auth.command.mode.set.failure",
-                    CommandSupport.describeCommandFailure(source, "setting player login mode", runtimeException)));
-            return 0;
-        }
-    }
-
-    /**
      * /auth remove：管理员移除玩家的全部认证数据。
      */
     private static int removePlayer(CommandSourceStack source, String target) {
@@ -270,20 +208,4 @@ public final class AuthCommands {
         }
     }
 
-    private static OnlineAuthService.LoginMode parseLoginMode(CommandSourceStack source, String modeRaw) {
-        if (modeRaw == null) {
-            return null;
-        }
-
-        String normalized = modeRaw.trim().toLowerCase(Locale.ROOT);
-        return switch (normalized) {
-            case "online" -> OnlineAuthService.LoginMode.ONLINE;
-            case "offline" -> OnlineAuthService.LoginMode.OFFLINE;
-            default -> {
-                source.sendFailure(
-                        AuthTranslations.componentForSource(source, "auth.command.mode.invalid_mode", modeRaw));
-                yield null;
-            }
-        };
-    }
 }
