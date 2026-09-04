@@ -70,6 +70,16 @@ public final class DatabaseSupport {
                 updated_at BIGINT NOT NULL
             )
             """;
+    private static final String OFFLINE_CLIENT_ALIASES_SQL = """
+            CREATE TABLE IF NOT EXISTS offline_client_aliases (
+                canonical_offline_uuid VARCHAR NOT NULL,
+                client_uuid VARCHAR NOT NULL,
+                username VARCHAR_IGNORECASE NOT NULL,
+                created_at BIGINT NOT NULL,
+                updated_at BIGINT NOT NULL,
+                PRIMARY KEY (canonical_offline_uuid, client_uuid)
+            )
+            """;
 
     private static volatile Path databasePath;
     private static volatile JdbcConnectionPool connectionPool;
@@ -129,6 +139,7 @@ public final class DatabaseSupport {
                 statement.execute(OFFLINE_TRUSTED_LOGINS_SQL);
                 statement.execute(OFFLINE_TRUSTED_LOGINS_INDEX_SQL);
                 statement.execute(KNOWN_PLAYERS_SQL);
+                statement.execute(OFFLINE_CLIENT_ALIASES_SQL);
             } catch (SQLException sqlException) {
                 pool.dispose();
                 throw new IllegalStateException("Failed to initialize auth database", sqlException);

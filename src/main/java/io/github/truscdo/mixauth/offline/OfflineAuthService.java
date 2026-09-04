@@ -1,10 +1,12 @@
 package io.github.truscdo.mixauth.offline;
 
+import com.mojang.authlib.GameProfile;
 import io.github.truscdo.mixauth.AuthServerConfig;
 import io.github.truscdo.mixauth.KnownPlayerService;
 import io.github.truscdo.mixauth.LogUtil;
 import io.github.truscdo.mixauth.PasswordHasher;
 import io.github.truscdo.mixauth.cache.AuthStore;
+import io.github.truscdo.mixauth.compat.ProfileCompat;
 import io.github.truscdo.mixauth.localization.AuthTranslations;
 import io.github.truscdo.mixauth.online.OnlineAuthService;
 import org.slf4j.Logger;
@@ -27,8 +29,30 @@ public final class OfflineAuthService {
     private OfflineAuthService() {
     }
 
+    /**
+     * OfflineGate 的身份写入：known 与 alias 均使用 canonicalOfflineProfile 的身份，
+     * clientUuid 只作为 alias 路由键。
+     */
+    public static void recordOfflineLogin(GameProfile canonicalOfflineProfile, UUID clientUuid) {
+        if (canonicalOfflineProfile == null) {
+            throw new IllegalArgumentException("Missing canonical offline profile");
+        }
+        UUID canonicalOfflineUuid = ProfileCompat.uuid(canonicalOfflineProfile);
+        String username = ProfileCompat.name(canonicalOfflineProfile);
+        if (canonicalOfflineUuid == null || clientUuid == null || username == null || username.isBlank()
+                || !canonicalOfflineUuid.equals(PlayerIdentityService.resolvePlayerUuid(username))) {
+            throw new IllegalArgumentException("Invalid canonical offline profile");
+        }
+
+        KnownPlayerService.recordKnownPlayer(
+                canonicalOfflineUuid,
+                username,
+                OnlineAuthService.LoginMode.OFFLINE);
+        AuthStore.recordOfflineClientAlias(canonicalOfflineUuid, clientUuid, username);
+    }
+
     public static void recordOfflineLogin(UUID playerUuid, String username) {
-        KnownPlayerService.recordKnownPlayer(playerUuid, username, OnlineAuthService.LoginMode.OFFLINE);
+        recordOfflineLogin(new GameProfile(playerUuid, username), playerUuid);
     }
 
     public static boolean isOfflineRegistered(UUID playerUuid) {

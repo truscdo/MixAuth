@@ -2,6 +2,7 @@ package io.github.truscdo.mixauth.cache;
 
 import io.github.truscdo.mixauth.LogUtil;
 import io.github.truscdo.mixauth.db.KnownPlayerDao;
+import io.github.truscdo.mixauth.db.OfflineClientAliasDao;
 import io.github.truscdo.mixauth.db.OfflineLoginBlockDao;
 import io.github.truscdo.mixauth.db.OfflineTrustedLoginDao;
 import io.github.truscdo.mixauth.db.OfflineUserDao;
@@ -15,6 +16,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.HashSet;
+import java.util.Set;
 
 /**
  * 直接读写层：唯一接触 JDBC 的单 worker 平台线程（FIFO 有序）。
@@ -108,7 +111,7 @@ final class DirectDb {
     }
 
     /**
-     * 启动时在单 worker 上异步全量加载四表到缓存。
+     * 启动时在单 worker 上异步全量加载五类数据到缓存。
      * <p>
      * 成败策略由调用方（AuthMod）决定：成功后放行加载锁存器；失败则停机（fail-closed）。
      * </p>
@@ -116,6 +119,7 @@ final class DirectDb {
     public static CompletableFuture<Void> loadAllAsync() {
         return DirectDb.<Void>submit(() -> {
             loadKnownPlayers();
+            loadOfflineClientAliases();
             loadOfflineUsers();
             loadBlocks();
             loadTrusted();
@@ -126,6 +130,18 @@ final class DirectDb {
     private static void loadKnownPlayers() {
         for (KnownPlayerDao.KnownPlayerEntry entry : KnownPlayerDao.findAll()) {
             AuthCache.backfillKnown(entry.playerUuid(), entry.username(), entry.loginMode());
+        }
+    }
+
+    private static void loadOfflineClientAliases() {
+        Set<java.util.UUID> canonicalOfflineUuids = new HashSet<>();
+        for (OfflineClientAliasDao.OfflineClientAliasEntry entry : OfflineClientAliasDao.findAll()) {
+            AuthCache.backfillAlias(entry);
+            canonicalOfflineUuids.add(entry.canonicalOfflineUuid());
+        }
+        for (java.util.UUID canonicalOfflineUuid : canonicalOfflineUuids) {
+            OfflineClientAliasDao.trimToCapacity(
+                    canonicalOfflineUuid, null, AuthCache.OFFLINE_ALIAS_CAPACITY);
         }
     }
 

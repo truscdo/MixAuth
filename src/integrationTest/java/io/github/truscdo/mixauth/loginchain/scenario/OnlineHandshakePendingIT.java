@@ -1,11 +1,8 @@
-// 在线加密握手 与 hasJoined 返回 500 两个场景。
+// 在线加密握手 与 hasJoined 返回 500 两个场景，以及 canonical UUID 路由回归场景。
 //
-// 路由机制：MCC 离线客户端每次启动随机生成 profileId，与 mock profile lookup
-// 返回的固定 UUID 必然不匹配，登录前预检会永远判定离线、在线握手分支不可达。
-// 因此本类不依赖预检，而是通过 RCON 执行 /auth setmode <离线UUID> online 预置
-// 已知玩家，利用 KnownPlayerService.resolveLoginMode 的「服务器生成 UUID 回退」
-// 分支，使 handleHello 拦截后直接进入在线握手分支（跳过 profile 预检）。
-// 离线 UUID 用 Minecraft 标准算法计算：UUID.nameUUIDFromBytes("OfflinePlayer:" + 用户名)。
+// MCC 离线客户端每次启动可能使用不同的 client UUID，因此回归场景先让同名玩家
+// 完成一次离线登录，再用新的 client UUID 重进；第二次必须继续执行登录前预检，
+// 不能仅因为 canonical 离线 UUID 已知就直接命中离线路由。
 package io.github.truscdo.mixauth.loginchain.scenario;
 
 import io.github.truscdo.mixauth.loginchain.LoginChainITBase;
@@ -23,14 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @Tag("online")
 public class OnlineHandshakePendingIT extends LoginChainITBase {
 
-    /**
-     * 通过 RCON 预置已知玩家并指定 Online 登录模式。
-     * <p>
-     * 目标使用服务器生成的离线 UUID（Minecraft 标准算法），使
-     * {@code resolveLoginMode} 的「服务器生成 UUID 回退」分支能命中，
-     * 从而让 handleHello 拦截后直接进入在线握手分支，跳过 profile 预检。
-     * {@code setLoginMode} 缓存先行，命令返回后内存立即生效。
-     */
+    /** 通过 RCON 预置一个 ONLINE 记录；实际 client UUID 夹具补齐后再启用。 */
     private void presetKnownPlayer(String username) {
         UUID offlineUuid = UUID.nameUUIDFromBytes(
                 ("OfflinePlayer:" + username).getBytes(StandardCharsets.UTF_8));
@@ -38,6 +28,34 @@ public class OnlineHandshakePendingIT extends LoginChainITBase {
         // 成功消息（auth.command.mode.set.success）包含目标 UUID，语言无关
         assertTrue(out != null && out.contains(offlineUuid.toString()),
                 () -> "preset known player failed for " + username + "; rcon out: " + out);
+    }
+
+    @Test
+    @DisplayName("路由回归：同名玩家更换 client UUID 后仍执行登录前预检")
+    public void canonicalUuidIsNotUsedAsClientUuidFallback() throws Exception {
+        String username = "CanonicalAliasRoute";
+        UUID canonicalUuid = UUID.nameUUIDFromBytes(
+                ("OfflinePlayer:" + username).getBytes(StandardCharsets.UTF_8));
+        assertTrue(mock.setMode("404", "online"), "mock /_mock/mode switch failed");
+
+        try {
+            try (MccDriver.MccRun first = MccDriver.launch("R-CANONICAL-1", username, false)) {
+                assertTrue(first.awaitJoin(90),
+                        () -> failMsg("first canonical collision login", "Server was successfully joined", first));
+                assertTrue(first.awaitServerLog("auth precheck routing", 30),
+                        () -> failMsgServer("auth precheck routing", first));
+            }
+
+            try (MccDriver.MccRun second = MccDriver.launch("R-CANONICAL-2", username, false)) {
+                assertTrue(second.awaitJoin(90),
+                        () -> failMsg("second canonical collision login", "Server was successfully joined", second));
+                // If routing falls back to the canonical UUID, this precheck log is absent.
+                assertTrue(second.awaitServerLog("auth precheck routing " + username, 30),
+                        () -> failMsgServer("auth precheck routing " + username, second));
+            }
+        } finally {
+            server.rcon("/auth remove " + canonicalUuid);
+        }
     }
 
     @Test

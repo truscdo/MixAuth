@@ -1,10 +1,9 @@
 package io.github.truscdo.mixauth;
 
 import io.github.truscdo.mixauth.cache.AuthStore;
-import io.github.truscdo.mixauth.compat.ProfileCompat;
+import io.github.truscdo.mixauth.db.OfflineClientAliasDao;
 import io.github.truscdo.mixauth.db.KnownPlayerDao;
 import io.github.truscdo.mixauth.online.OnlineAuthService;
-import net.minecraft.core.UUIDUtil;
 
 import java.util.List;
 import java.util.Map;
@@ -23,36 +22,38 @@ public final class KnownPlayerService {
     private KnownPlayerService() {
     }
 
+    /** 查询指定 clientUuid 的完整 known_players 记录；不会按用户名推导 UUID 回退查询。 */
+    public static KnownPlayerDao.KnownPlayerEntry findKnownPlayer(UUID clientUuid) {
+        return AuthStore.getKnownPlayer(clientUuid);
+    }
+
+    /** 查询指定离线身份与客户端 UUID 的路由 alias。 */
+    public static OfflineClientAliasDao.OfflineClientAliasEntry findOfflineClientAlias(
+            UUID canonicalOfflineUuid,
+            UUID clientUuid) {
+        return AuthStore.getOfflineClientAlias(canonicalOfflineUuid, clientUuid);
+    }
+
     /**
-     * 查询已知玩家名单中的登录模式。
-     * 先查 clientUuid，未命中则查 server-generated UUID（基于用户名）；两次查找命中同一份
-     * 缓存（AuthStore 内部 byUuid），无需两份缓存。
-     *
-     * @param clientUuid 客户端在 Login Start 中发送的 UUID
-     * @param username   玩家用户名
-     * @return LoginMode（ONLINE/OFFLINE）或 null（不在已知名单中）
+     * 查询 clientUuid 对应的登录模式。
+     * <p>
+     * 保留该兼容 API，但只查询 clientUuid 本身；不会再查询用户名推导出的 canonical UUID。
+     * </p>
      */
     public static OnlineAuthService.LoginMode resolveLoginMode(UUID clientUuid, String username) {
         if (username == null || username.isBlank()) {
             return null;
         }
+        KnownPlayerDao.KnownPlayerEntry entry = findKnownPlayer(clientUuid);
+        return entry == null ? null : parseLoginMode(entry.loginMode());
+    }
 
-        if (clientUuid != null) {
-            OnlineAuthService.LoginMode mode = AuthStore.getLoginMode(clientUuid);
-            if (mode != null) {
-                return mode;
-            }
+    private static OnlineAuthService.LoginMode parseLoginMode(String mode) {
+        try {
+            return mode == null ? null : OnlineAuthService.LoginMode.valueOf(mode);
+        } catch (IllegalArgumentException exception) {
+            return null;
         }
-
-        UUID serverUuid = ProfileCompat.uuid(UUIDUtil.createOfflineProfile(username));
-        if (!serverUuid.equals(clientUuid)) {
-            OnlineAuthService.LoginMode mode = AuthStore.getLoginMode(serverUuid);
-            if (mode != null) {
-                return mode;
-            }
-        }
-
-        return null;
     }
 
     /**

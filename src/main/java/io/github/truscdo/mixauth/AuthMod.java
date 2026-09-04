@@ -31,7 +31,7 @@ public final class AuthMod {
             PasswordBlacklistLoader.init();
             warnIfOnlineMode(event.getServer());
             MinecraftServer server = event.getServer();
-            // 启动时经单 worker 直接读异步全量加载四表到内存缓存；加载门控在 AuthStore 内自处理。
+            // 启动时经单 worker 直接读异步全量加载全部认证数据到内存缓存；加载门控在 AuthStore 内自处理。
             // 加载失败 = 认证服务完全不可用，停机（fail-closed）。
             AuthStore.loadAllAsync().whenComplete((unused, throwable) -> {
                 if (throwable != null) {

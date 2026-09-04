@@ -2,11 +2,13 @@ package io.github.truscdo.mixauth.cache;
 
 import io.github.truscdo.mixauth.db.DatabaseSupport;
 import io.github.truscdo.mixauth.db.KnownPlayerDao;
+import io.github.truscdo.mixauth.db.OfflineClientAliasDao;
 import io.github.truscdo.mixauth.db.OfflineLoginBlockDao;
 import io.github.truscdo.mixauth.db.OfflineTrustedLoginDao;
 import io.github.truscdo.mixauth.db.OfflineUserDao;
 import io.github.truscdo.mixauth.online.OnlineAuthService;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
 import java.util.Set;
@@ -21,7 +23,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * 业务层（{@code OfflineAuthService} / {@code KnownPlayerService}）只通过本类获取/删除/写入
  * 数据；「读缓存还是读库、加载门控、write-through / write-behind、一致性同步、清理节流」
  * 全部在本门面内决策。内部聚合 {@link AuthCache}（内存镜像）+ {@link DirectDb}（单 worker
- * JDBC）+ 4 个 DAO，后两者为包内实现细节，业务层不可见。
+ * JDBC）+ 5 个 DAO，后两者为包内实现细节，业务层不可见。
  * </p>
  *
  * <p>
@@ -78,6 +80,26 @@ public final class AuthStore {
         AuthCache.awaitLoaded();
         AuthCache.KnownEntry entry = AuthCache.getKnown(uuid);
         return entry == null ? null : entry.mode();
+    }
+
+    /** 读 known_players：返回指定 UUID 的完整记录。 */
+    public static KnownPlayerDao.KnownPlayerEntry getKnownPlayer(UUID uuid) {
+        if (uuid == null) {
+            return null;
+        }
+        AuthCache.awaitLoaded();
+        return AuthCache.getKnownPlayerEntry(uuid);
+    }
+
+    /** 读 offline_client_aliases：按复合键查询。 */
+    public static OfflineClientAliasDao.OfflineClientAliasEntry getOfflineClientAlias(
+            UUID canonicalOfflineUuid,
+            UUID clientUuid) {
+        if (canonicalOfflineUuid == null || clientUuid == null) {
+            return null;
+        }
+        AuthCache.awaitLoaded();
+        return AuthCache.getAlias(canonicalOfflineUuid, clientUuid);
     }
 
     /** 读 offline_trusted_logins：指定 (uuid, ip) 的认证时间戳，纯读不清理。 */
@@ -149,8 +171,8 @@ public final class AuthStore {
     }
 
     /**
-     * 关键写：四表全清（known + password + block + trusted）。一个 worker 任务内依次删除
-     * （join），成功后同步清理缓存四项；返回 known 是否删除。
+     * 关键写：五类数据全清（known + password + block + trusted + aliases）。一个 worker
+     * 任务内依次删除（join），成功后同步清理缓存；返回 known 是否删除。
      */
     public static CompletableFuture<Boolean> removePlayer(UUID uuid) {
         return DirectDb.submit(() -> {
@@ -158,10 +180,12 @@ public final class AuthStore {
             OfflineTrustedLoginDao.clearOfflineTrustedLogins(uuid);
             OfflineLoginBlockDao.clearOfflineLoginBlock(uuid);
             OfflineUserDao.deleteOfflineUser(uuid);
+            OfflineClientAliasDao.removeAll(uuid);
             AuthCache.removeKnown(uuid);
             AuthCache.removePassword(uuid);
             AuthCache.removeBlock(uuid);
             AuthCache.removeTrustedByUuid(uuid);
+            AuthCache.removeAliases(uuid);
             return knownRemoved;
         });
     }
@@ -185,6 +209,37 @@ public final class AuthStore {
         }
         AuthCache.putKnown(uuid, name, mode);
         DirectDb.submitWrite(() -> KnownPlayerDao.saveKnownPlayer(uuid, name, mode.name()));
+    }
+
+    /**
+     * 非关键写（offline_client_aliases）：缓存先行 + write-behind，并在 DB worker 内执行
+     * 单个 canonical 身份的容量淘汰。
+     */
+    public static void recordOfflineClientAlias(UUID canonicalOfflineUuid, UUID clientUuid, String username) {
+        if (canonicalOfflineUuid == null || clientUuid == null || username == null || username.isBlank()) {
+            return;
+        }
+        UUID expectedCanonicalUuid = UUID.nameUUIDFromBytes(
+                ("OfflinePlayer:" + username).getBytes(StandardCharsets.UTF_8));
+        if (!canonicalOfflineUuid.equals(expectedCanonicalUuid)) {
+            return;
+        }
+        long now = Instant.now().toEpochMilli();
+        AuthCache.AliasMutation mutation = AuthCache.putAlias(
+                canonicalOfflineUuid, clientUuid, username, now);
+        if (mutation == null) {
+            return;
+        }
+        DirectDb.submitWrite(() -> {
+            OfflineClientAliasDao.save(
+                    canonicalOfflineUuid,
+                    clientUuid,
+                    username,
+                    mutation.entry().createdAt(),
+                    mutation.entry().updatedAt());
+            OfflineClientAliasDao.trimToCapacity(
+                    canonicalOfflineUuid, clientUuid, AuthCache.OFFLINE_ALIAS_CAPACITY);
+        });
     }
 
     /** 非关键写（offline_login_blocks）：记录封禁，缓存先行。 */

@@ -3,6 +3,7 @@ package io.github.truscdo.mixauth.gametest;
 import io.github.truscdo.mixauth.cache.AuthStore;
 import io.github.truscdo.mixauth.db.DatabaseSupport;
 import io.github.truscdo.mixauth.db.KnownPlayerDao;
+import io.github.truscdo.mixauth.db.OfflineClientAliasDao;
 import io.github.truscdo.mixauth.db.OfflineLoginBlockDao;
 import io.github.truscdo.mixauth.db.OfflineTrustedLoginDao;
 import io.github.truscdo.mixauth.db.OfflineUserDao;
@@ -12,7 +13,10 @@ import net.minecraft.gametest.framework.GameTestInfo;
 import net.neoforged.testframework.annotation.TestHolder;
 import net.neoforged.testframework.gametest.EmptyTemplate;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
@@ -27,7 +31,7 @@ import java.util.concurrent.locks.LockSupport;
  * <li>非关键写（recordBlock/clearBlock/recordKnown）= 缓存先行 →
  * write-behind（可重建）。</li>
  * </ul>
- * 本测试在真实服务器进程内直接比对「缓存通道（AuthStore.get*）」与「DB 通道（4 个 DAO
+ * 本测试在真实服务器进程内直接比对「缓存通道（AuthStore.get*）」与「DB 通道（各 DAO
  * findAll 按 uuid 过滤）」。非关键写落库异步，经 {@link AuthGameTestBase#awaitDb} 轮询
  * 最终一致。
  * <p>
@@ -141,36 +145,90 @@ public class CacheSyncGameTest extends AuthGameTestBase {
     }
 
     // ====================================================================
-    // 用例 3：复合关键写 removePlayer = 四表全清 + 缓存同步
+    // 用例 3：复合关键写 removePlayer = 全部认证数据清理 + 缓存同步
     // ====================================================================
 
     @GameTest
     @EmptyTemplate
-    @TestHolder(description = { "复合关键写：removePlayer 清空 known/password/block/trusted 四表且缓存四读全 null" })
-    static void removePlayerClearsAllFourTablesAndCache(AuthGameTestBase helper) {
+    @TestHolder(description = { "Offline client alias: write-through cache, refresh, and capacity eviction" })
+    static void offlineClientAliasesRespectCapacityAndRefresh(AuthGameTestBase helper) {
+        String username = "SyncAliasCapacity";
+        UUID canonicalUuid = offlineUuid(username);
+        helper.resetPlayerData(canonicalUuid);
+
+        List<UUID> clientUuids = new ArrayList<>();
+        for (int index = 0; index < 9; index++) {
+            UUID clientUuid = UUID.nameUUIDFromBytes(
+                    ("AliasClient:" + index).getBytes(StandardCharsets.UTF_8));
+            clientUuids.add(clientUuid);
+            AuthStore.recordOfflineClientAlias(canonicalUuid, clientUuid, username);
+            // Keep updated_at strictly ordered so the oldest entry is deterministic.
+            LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(2L));
+        }
+
+        UUID oldestClientUuid = clientUuids.get(0);
+        UUID newestClientUuid = clientUuids.get(8);
+        helper.assertTrue(helper.awaitDb(5_000L, () -> {
+            List<OfflineClientAliasDao.OfflineClientAliasEntry> aliases = OfflineClientAliasDao.findAll().stream()
+                    .filter(entry -> entry.canonicalOfflineUuid().equals(canonicalUuid))
+                    .toList();
+            return aliases.size() == 8
+                    && aliases.stream().noneMatch(entry -> entry.clientUuid().equals(oldestClientUuid))
+                    && aliases.stream().anyMatch(entry -> entry.clientUuid().equals(newestClientUuid));
+        }), "expected alias DB rows to retain the newest eight client UUIDs");
+
+        OfflineClientAliasDao.OfflineClientAliasEntry beforeRefresh =
+                AuthStore.getOfflineClientAlias(canonicalUuid, newestClientUuid);
+        helper.assertTrue(beforeRefresh != null,
+                "expected newest alias to be visible from cache after capacity eviction");
+        LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(3L));
+        AuthStore.recordOfflineClientAlias(canonicalUuid, newestClientUuid, username);
+
+        helper.assertTrue(helper.awaitDb(5_000L, () -> {
+            OfflineClientAliasDao.OfflineClientAliasEntry refreshed =
+                    OfflineClientAliasDao.find(canonicalUuid, newestClientUuid);
+            return refreshed != null
+                    && refreshed.createdAt() == beforeRefresh.createdAt()
+                    && refreshed.updatedAt() >= beforeRefresh.updatedAt();
+        }), "expected repeated alias write to preserve created_at and refresh updated_at");
+        helper.assertTrue(AuthStore.getOfflineClientAlias(canonicalUuid, newestClientUuid) != null,
+                "expected refreshed alias to remain visible from cache");
+
+        helper.resetPlayerData(canonicalUuid);
+        helper.succeed();
+    }
+
+    @GameTest
+    @EmptyTemplate
+    @TestHolder(description = { "复合关键写：removePlayer 清空全部认证数据且缓存读取全为 null" })
+    static void removePlayerClearsAllAuthDataAndCache(AuthGameTestBase helper) {
         UUID uuid = offlineUuid("SyncRemove");
         helper.resetPlayerData(uuid);
         long futureTs = Instant.now().toEpochMilli() + 60_000L;
+        UUID aliasClientUuid = UUID.nameUUIDFromBytes(
+                "AliasClient:remove".getBytes(StandardCharsets.UTF_8));
 
-        // 制造四表数据：password/trusted 为 join 写，known/block 为 write-behind。
+        // 制造认证数据：password/trusted 为 join 写，known/block 为 write-behind。
         helper.assertTrue(AuthStore.insertPassword(uuid, "HASH").join(),
                 "expected insertPassword to seed offline_users");
         AuthStore.recordKnown(uuid, "SyncRemove", OnlineAuthService.LoginMode.OFFLINE);
         AuthStore.recordBlock(uuid, futureTs);
         AuthStore.recordTrusted(uuid, SYNC_TRUST_IP, Instant.now().toEpochMilli()).join();
+        AuthStore.recordOfflineClientAlias(uuid, aliasClientUuid, "SyncRemove");
 
-        // 等 write-behind 的 known/block 落库，确保 removePlayer 前四表数据齐备。
+        // 等 write-behind 的 known/block 落库，确保 removePlayer 前数据齐备。
         helper.assertTrue(helper.awaitDb(5_000L, () -> KnownPlayerDao.findAll().stream()
                 .anyMatch(entry -> entry.playerUuid().equals(uuid))
                 && OfflineLoginBlockDao.findAll().stream()
-                        .anyMatch(row -> row.playerUuid().equals(uuid))),
-                "expected known+block write-behind flushed before removePlayer");
+                        .anyMatch(row -> row.playerUuid().equals(uuid))
+                && OfflineClientAliasDao.find(uuid, aliasClientUuid) != null),
+                "expected known+block+alias write-behind flushed before removePlayer");
 
         // removePlayer：复合关键写，返回 known 是否删除。
         helper.assertTrue(AuthStore.removePlayer(uuid).join(),
                 "expected removePlayer to remove known player");
 
-        // 缓存四读全 null。
+        // 缓存读取全为 null。
         helper.assertTrue(AuthStore.getPasswordHash(uuid) == null,
                 "expected cache password hash null after removePlayer");
         helper.assertTrue(AuthStore.getLoginMode(uuid) == null,
@@ -179,8 +237,10 @@ public class CacheSyncGameTest extends AuthGameTestBase {
                 "expected cache blockedUntil null after removePlayer");
         helper.assertTrue(AuthStore.getTrustedAt(uuid, SYNC_TRUST_IP) == null,
                 "expected cache trustedAt null after removePlayer");
+        helper.assertTrue(AuthStore.getOfflineClientAlias(uuid, aliasClientUuid) == null,
+                "expected cache offline client alias null after removePlayer");
 
-        // DB 四表均不含该 uuid（join 后立即可断言）。
+        // DB 中该玩家的认证数据均已删除（join 后立即可断言）。
         helper.assertTrue(OfflineUserDao.findAll().stream().noneMatch(row -> row.playerUuid().equals(uuid)),
                 "expected offline_users row removed");
         helper.assertTrue(KnownPlayerDao.findAll().stream().noneMatch(entry -> entry.playerUuid().equals(uuid)),
@@ -189,6 +249,9 @@ public class CacheSyncGameTest extends AuthGameTestBase {
                 "expected offline_login_blocks row removed");
         helper.assertTrue(OfflineTrustedLoginDao.findAll().stream().noneMatch(row -> row.playerUuid().equals(uuid)),
                 "expected offline_trusted_logins row removed");
+        helper.assertTrue(OfflineClientAliasDao.findAll().stream()
+                .noneMatch(row -> row.canonicalOfflineUuid().equals(uuid)),
+                "expected offline_client_aliases rows removed");
 
         helper.succeed();
     }

@@ -2,6 +2,7 @@ package io.github.truscdo.mixauth.cache;
 
 import io.github.truscdo.mixauth.LogUtil;
 import io.github.truscdo.mixauth.db.KnownPlayerDao;
+import io.github.truscdo.mixauth.db.OfflineClientAliasDao;
 import io.github.truscdo.mixauth.online.OnlineAuthService;
 import org.slf4j.Logger;
 
@@ -18,7 +19,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 /**
- * 缓存读写层：四张表的内存镜像，热路径读写的唯一入口。
+ * 缓存读写层：五张表的内存镜像，热路径读写的唯一入口。
  *
  * <p>
  * 与直接读写层 {@link DirectDb} 的关系：本类只操作内存结构、不接触 JDBC；直接层的
@@ -47,6 +48,14 @@ final class AuthCache {
     private static final ConcurrentSkipListMap<String, Set<UUID>> KNOWN_BY_NAME = new ConcurrentSkipListMap<>();
     private static final ConcurrentSkipListMap<String, UUID> KNOWN_BY_UUID_STR = new ConcurrentSkipListMap<>();
 
+    // ---- offline_client_aliases：复合键 O(1) 查询 + canonical -> client UUID 集合 ----
+    static final int OFFLINE_ALIAS_CAPACITY = 8;
+    private static final int ALIAS_LOCK_COUNT = 64;
+    private static final Object[] ALIAS_LOCKS = new Object[ALIAS_LOCK_COUNT];
+    private static final ConcurrentHashMap<AliasKey, OfflineClientAliasDao.OfflineClientAliasEntry>
+            OFFLINE_CLIENT_ALIASES = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<UUID, Set<UUID>> ALIAS_CLIENTS_BY_CANONICAL = new ConcurrentHashMap<>();
+
     // ---- offline_users：uuid -> password_hash ----
     private static final ConcurrentHashMap<UUID, String> PASSWORD_HASHES = new ConcurrentHashMap<>();
 
@@ -60,6 +69,12 @@ final class AuthCache {
 
     /** 启动全量加载完成信号（管理前缀索引依赖完整构建）。 */
     private static final CountDownLatch LOADED = new CountDownLatch(1);
+
+    static {
+        for (int index = 0; index < ALIAS_LOCKS.length; index++) {
+            ALIAS_LOCKS[index] = new Object();
+        }
+    }
 
     private AuthCache() {
     }
@@ -188,6 +203,159 @@ final class AuthCache {
 
     private static KnownPlayerDao.KnownPlayerEntry toDaoEntry(KnownEntry entry) {
         return new KnownPlayerDao.KnownPlayerEntry(entry.playerUuid(), entry.username(), entry.mode().name());
+    }
+
+    public static KnownPlayerDao.KnownPlayerEntry getKnownPlayerEntry(UUID playerUuid) {
+        KnownEntry entry = getKnown(playerUuid);
+        return entry == null ? null : toDaoEntry(entry);
+    }
+
+    // ====================================================================
+    // offline_client_aliases
+    // ====================================================================
+
+    public record AliasKey(UUID canonicalOfflineUuid, UUID clientUuid) {
+    }
+
+    /**
+     * 缓存先行写入 alias，并在单个 canonical 身份内执行最多 8 条的容量淘汰。
+     * 返回本次写入结果，供 DirectDb write-behind 使用。
+     */
+    public static AliasMutation putAlias(
+            UUID canonicalOfflineUuid,
+            UUID clientUuid,
+            String username,
+            long updatedAt) {
+        if (canonicalOfflineUuid == null || clientUuid == null || username == null || username.isBlank()) {
+            return null;
+        }
+
+        AliasKey key = new AliasKey(canonicalOfflineUuid, clientUuid);
+        synchronized (aliasLock(canonicalOfflineUuid)) {
+            OfflineClientAliasDao.OfflineClientAliasEntry previous = OFFLINE_CLIENT_ALIASES.get(key);
+            long createdAt = previous == null ? updatedAt : previous.createdAt();
+            OfflineClientAliasDao.OfflineClientAliasEntry entry = new OfflineClientAliasDao.OfflineClientAliasEntry(
+                    canonicalOfflineUuid, clientUuid, username, createdAt, updatedAt);
+            OFFLINE_CLIENT_ALIASES.put(key, entry);
+            ALIAS_CLIENTS_BY_CANONICAL.computeIfAbsent(canonicalOfflineUuid,
+                    ignored -> ConcurrentHashMap.newKeySet()).add(clientUuid);
+
+            List<AliasKey> evicted = new ArrayList<>();
+            Set<UUID> clientUuids = ALIAS_CLIENTS_BY_CANONICAL.get(canonicalOfflineUuid);
+            while (clientUuids != null && clientUuids.size() > OFFLINE_ALIAS_CAPACITY) {
+                AliasKey oldest = oldestAlias(canonicalOfflineUuid, clientUuids, key);
+                if (oldest == null) {
+                    break;
+                }
+                removeAliasLocked(oldest);
+                evicted.add(oldest);
+            }
+            return new AliasMutation(entry, List.copyOf(evicted));
+        }
+    }
+
+    /** 启动回填 alias；并发新写优先，加载后的内存状态始终不超过容量。 */
+    public static void backfillAlias(OfflineClientAliasDao.OfflineClientAliasEntry entry) {
+        if (entry == null || entry.canonicalOfflineUuid() == null || entry.clientUuid() == null
+                || entry.username() == null || entry.username().isBlank()) {
+            return;
+        }
+
+        AliasKey key = new AliasKey(entry.canonicalOfflineUuid(), entry.clientUuid());
+        synchronized (aliasLock(entry.canonicalOfflineUuid())) {
+            if (OFFLINE_CLIENT_ALIASES.putIfAbsent(key, entry) != null) {
+                return;
+            }
+            Set<UUID> clientUuids = ALIAS_CLIENTS_BY_CANONICAL.computeIfAbsent(entry.canonicalOfflineUuid(),
+                    ignored -> ConcurrentHashMap.newKeySet());
+            clientUuids.add(entry.clientUuid());
+            while (clientUuids.size() > OFFLINE_ALIAS_CAPACITY) {
+                AliasKey oldest = oldestAlias(entry.canonicalOfflineUuid(), clientUuids, null);
+                if (oldest == null) {
+                    break;
+                }
+                removeAliasLocked(oldest);
+            }
+        }
+    }
+
+    public static OfflineClientAliasDao.OfflineClientAliasEntry getAlias(
+            UUID canonicalOfflineUuid,
+            UUID clientUuid) {
+        if (canonicalOfflineUuid == null || clientUuid == null) {
+            return null;
+        }
+        return OFFLINE_CLIENT_ALIASES.get(new AliasKey(canonicalOfflineUuid, clientUuid));
+    }
+
+    public static void removeAliases(UUID canonicalOfflineUuid) {
+        if (canonicalOfflineUuid == null) {
+            return;
+        }
+        synchronized (aliasLock(canonicalOfflineUuid)) {
+            Set<UUID> clientUuids = ALIAS_CLIENTS_BY_CANONICAL.remove(canonicalOfflineUuid);
+            if (clientUuids == null) {
+                return;
+            }
+            for (UUID clientUuid : clientUuids) {
+                OFFLINE_CLIENT_ALIASES.remove(new AliasKey(canonicalOfflineUuid, clientUuid));
+            }
+        }
+    }
+
+    private static AliasKey oldestAlias(UUID canonicalOfflineUuid, Set<UUID> clientUuids, AliasKey excluded) {
+        AliasKey oldest = null;
+        OfflineClientAliasDao.OfflineClientAliasEntry oldestEntry = null;
+        for (UUID clientUuid : clientUuids) {
+            AliasKey candidate = new AliasKey(canonicalOfflineUuid, clientUuid);
+            if (candidate.equals(excluded)) {
+                continue;
+            }
+            OfflineClientAliasDao.OfflineClientAliasEntry candidateEntry = OFFLINE_CLIENT_ALIASES.get(candidate);
+            if (candidateEntry == null) {
+                continue;
+            }
+            if (oldestEntry == null || compareAlias(candidateEntry, oldestEntry) < 0) {
+                oldest = candidate;
+                oldestEntry = candidateEntry;
+            }
+        }
+        return oldest;
+    }
+
+    private static int compareAlias(
+            OfflineClientAliasDao.OfflineClientAliasEntry left,
+            OfflineClientAliasDao.OfflineClientAliasEntry right) {
+        int updatedComparison = Long.compare(left.updatedAt(), right.updatedAt());
+        if (updatedComparison != 0) {
+            return updatedComparison;
+        }
+        int createdComparison = Long.compare(left.createdAt(), right.createdAt());
+        if (createdComparison != 0) {
+            return createdComparison;
+        }
+        return left.clientUuid().toString().compareTo(right.clientUuid().toString());
+    }
+
+    private static void removeAliasLocked(AliasKey key) {
+        OFFLINE_CLIENT_ALIASES.remove(key);
+        Set<UUID> clientUuids = ALIAS_CLIENTS_BY_CANONICAL.get(key.canonicalOfflineUuid());
+        if (clientUuids != null) {
+            clientUuids.remove(key.clientUuid());
+            if (clientUuids.isEmpty()) {
+                ALIAS_CLIENTS_BY_CANONICAL.remove(key.canonicalOfflineUuid(), clientUuids);
+            }
+        }
+    }
+
+    private static Object aliasLock(UUID canonicalOfflineUuid) {
+        int hash = canonicalOfflineUuid.hashCode() & Integer.MAX_VALUE;
+        return ALIAS_LOCKS[hash % ALIAS_LOCK_COUNT];
+    }
+
+    public record AliasMutation(
+            OfflineClientAliasDao.OfflineClientAliasEntry entry,
+            List<AliasKey> evicted) {
     }
 
     // ====================================================================

@@ -6,6 +6,7 @@ import io.github.truscdo.mixauth.compat.ProfileCompat;
 import io.github.truscdo.mixauth.offline.OfflineAuthService;
 import io.github.truscdo.mixauth.online.OnlineAuthService;
 import io.github.truscdo.mixauth.offline.PlayerIdentityService;
+import io.github.truscdo.mixauth.db.OfflineClientAliasDao;
 import io.github.truscdo.mixauth.localization.AuthLocalizedText;
 import io.github.truscdo.mixauth.localization.AuthTranslations;
 import io.github.truscdo.mixauth.validation.MojangClient;
@@ -47,6 +48,8 @@ abstract class ServerLoginPacketListenerImplMixin {
     private volatile boolean auth$disconnected;
     @Unique
     private volatile UUID auth$requestedProfileId;
+    @Unique
+    private volatile GameProfile auth$canonicalOfflineProfile;
 
     @Shadow
     @Final
@@ -79,44 +82,62 @@ abstract class ServerLoginPacketListenerImplMixin {
         this.auth$requestedProfileId = packet.profileId();
         callbackInfo.cancel();
 
-        // 1. 封禁检查
-        UUID blockCheckUuid = PlayerIdentityService.resolvePlayerUuid(packet.name());
-        long remainingBlockedMillis = OfflineAuthService.getOfflineLoginBlockRemainingMillis(blockCheckUuid);
-        if (remainingBlockedMillis > 0L) {
-            this.disconnect(AuthTranslations.componentForConfiguredLanguage(
-                    "auth.error.offline_temporarily_blocked",
-                    OfflineAuthService.formatDuration(AuthServerConfig.defaultLanguage(), remainingBlockedMillis)));
-            return;
-        }
-
-        // 2. 检查已知玩家名单，跳过预检查
         String username = packet.name();
         UUID clientUuid = packet.profileId();
-        OnlineAuthService.LoginMode knownMode = KnownPlayerService.resolveLoginMode(clientUuid, username);
-        if (knownMode != null) {
-            AUTH_LOGGER.info("Known player {} routed by login mode: {}", username, knownMode);
-            if (knownMode == OnlineAuthService.LoginMode.ONLINE) {
-                auth$beginOnlineHandshake(packet);
-            } else {
-                UUID playerUuid = PlayerIdentityService.resolvePlayerUuid(username);
-                OfflineAuthService.recordOfflineLogin(playerUuid, username);
-                this.auth$startClientVerification(PlayerIdentityService.createOfflineProfile(username));
-            }
+        if (username == null || username.isBlank() || clientUuid == null) {
+            AUTH_LOGGER.warn("Invalid Login Start identity, disconnecting client: username={}, clientUuid={}",
+                    username, clientUuid);
+            this.disconnect(AuthTranslations.componentForConfiguredLanguage(
+                    "auth.validation.reason.missing_username"));
             return;
         }
 
-        // 2.5 离线模式 UUID 本地检测：已确认的离线 UUID 跳过 Mojang API
+        try {
+            // 一个 Login Start 只创建一次 canonical profile，所有 OfflineGate 路径复用它。
+            this.auth$canonicalOfflineProfile = PlayerIdentityService.createOfflineProfile(username);
+        } catch (RuntimeException runtimeException) {
+            AUTH_LOGGER.warn("Failed to create canonical offline profile for {}", username, runtimeException);
+            this.disconnect(AuthTranslations.componentForConfiguredLanguage(
+                    "auth.validation.reason.mojang_data_error"));
+            return;
+        }
+        UUID canonicalOfflineUuid = ProfileCompat.uuid(this.auth$canonicalOfflineProfile);
+
+        // 1. 只查询 clientUuid 对应的完整 known_players 记录。
+        var knownPlayer = KnownPlayerService.findKnownPlayer(clientUuid);
+        if (knownPlayer != null) {
+            OnlineAuthService.LoginMode knownMode = OnlineAuthService.LoginMode.valueOf(knownPlayer.loginMode());
+            AUTH_LOGGER.info("Known player {} routed by client UUID login mode: {}", username, knownMode);
+            if (knownMode == OnlineAuthService.LoginMode.ONLINE) {
+                // ONLINE 优先级最高；后续握手/hasJoined 失败时只拒绝，不降级。
+                auth$beginOnlineHandshake(packet);
+                return;
+            }
+            if (clientUuid.equals(canonicalOfflineUuid)) {
+                auth$enterOfflineGate();
+                return;
+            }
+        }
+
+        // 2. 查询精确的 canonicalOfflineUuid + clientUuid alias。
+        OfflineClientAliasDao.OfflineClientAliasEntry alias = KnownPlayerService.findOfflineClientAlias(
+                canonicalOfflineUuid, clientUuid);
+        if (alias != null && username.equalsIgnoreCase(alias.username())) {
+            AUTH_LOGGER.info("Offline player {} routed by client UUID alias", username);
+            auth$enterOfflineGate();
+            return;
+        }
+
+        // 3. 离线模式 UUID 本地检测：已确认的离线 UUID 跳过 Mojang API。
         OfflineModeDetector.CheckResult detection = OfflineModeDetector.check(username, clientUuid);
         if (detection.isConfirmed()) {
             AUTH_LOGGER.info("Offline UUID confirmed locally for {} ({}), skipping Mojang pre-check",
                     username, detection.type());
-            UUID playerUuid = PlayerIdentityService.resolvePlayerUuid(username);
-            OfflineAuthService.recordOfflineLogin(playerUuid, username);
-            this.auth$startClientVerification(PlayerIdentityService.createOfflineProfile(username));
+            auth$enterOfflineGate();
             return;
         }
 
-        // 3. 未知玩家，执行预检查（MojangClient 专用有界执行器，队列满立即失败断开）
+        // 4. 未知身份执行 Mojang 预检查；API 异常由回调路径直接拒绝。
         MojangClient.asyncPreLoginCheck(packet.name(), packet.profileId())
                 .whenComplete((result, throwable) -> this.server.execute(() -> {
                     if (throwable != null) {
@@ -140,7 +161,7 @@ abstract class ServerLoginPacketListenerImplMixin {
                         case PreLoginCheckResult.Online r -> auth$beginOnlineHandshake(packet);
                         case PreLoginCheckResult.Offline r -> {
                             AUTH_LOGGER.info("auth precheck routing {} to offline login", r.username());
-                            auth$finishOfflineOrReject(r.username());
+                            auth$enterOfflineGate();
                         }
                         case PreLoginCheckResult.Disconnect r -> {
                             AUTH_LOGGER.warn("auth precheck disconnect for {}: {}", r.username(), r.reason());
@@ -205,6 +226,7 @@ abstract class ServerLoginPacketListenerImplMixin {
     private void auth$cleanupOnDisconnect(DisconnectionDetails details, CallbackInfo callbackInfo) {
         this.auth$disconnected = true;
         this.auth$requestedProfileId = null;
+        this.auth$canonicalOfflineProfile = null;
         OnlineHandshakeValidationService.clear(this.connection);
     }
 
@@ -255,17 +277,37 @@ abstract class ServerLoginPacketListenerImplMixin {
     }
 
     @Unique
-    private void auth$finishOfflineOrReject(String username) {
-        if (username == null || username.isBlank()) {
-            AUTH_LOGGER.warn("auth finishOfflineOrReject called with empty username, disconnecting");
-            this.disconnect(AuthTranslations.componentForConfiguredLanguage("auth.validation.reason.missing_username"));
+    private void auth$enterOfflineGate() {
+        GameProfile canonicalOfflineProfile = this.auth$canonicalOfflineProfile;
+        UUID clientUuid = this.auth$requestedProfileId;
+        if (canonicalOfflineProfile == null || clientUuid == null) {
+            AUTH_LOGGER.warn("auth OfflineGate called without canonical profile, disconnecting");
+            this.disconnect(AuthTranslations.componentForConfiguredLanguage(
+                    "auth.validation.reason.server_internal_error"));
             return;
         }
 
-        AUTH_LOGGER.info("auth validation falling back to offline login for {}", username);
-        UUID playerUuid = PlayerIdentityService.resolvePlayerUuid(username);
-        OfflineAuthService.recordOfflineLogin(playerUuid, username);
-        this.auth$startClientVerification(PlayerIdentityService.createOfflineProfile(username));
+        UUID canonicalOfflineUuid = ProfileCompat.uuid(canonicalOfflineProfile);
+        if (canonicalOfflineUuid == null) {
+            AUTH_LOGGER.warn("Canonical offline profile has no UUID, disconnecting {}",
+                    ProfileCompat.name(canonicalOfflineProfile));
+            this.disconnect(AuthTranslations.componentForConfiguredLanguage(
+                    "auth.validation.reason.server_internal_error"));
+            return;
+        }
+        long remainingBlockedMillis = OfflineAuthService.getOfflineLoginBlockRemainingMillis(canonicalOfflineUuid);
+        if (remainingBlockedMillis > 0L) {
+            AUTH_LOGGER.info("OfflineGate rejected temporarily blocked player {}",
+                    ProfileCompat.name(canonicalOfflineProfile));
+            this.disconnect(AuthTranslations.componentForConfiguredLanguage(
+                    "auth.error.offline_temporarily_blocked",
+                    OfflineAuthService.formatDuration(AuthServerConfig.defaultLanguage(), remainingBlockedMillis)));
+            return;
+        }
+
+        AUTH_LOGGER.info("auth OfflineGate accepted {}", ProfileCompat.name(canonicalOfflineProfile));
+        OfflineAuthService.recordOfflineLogin(canonicalOfflineProfile, clientUuid);
+        this.auth$startClientVerification(canonicalOfflineProfile);
     }
 
     @Unique
