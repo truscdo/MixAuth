@@ -10,6 +10,7 @@ package io.github.truscdo.mixauth.loginchain.scenario;
 
 import io.github.truscdo.mixauth.loginchain.LoginChainITBase;
 import io.github.truscdo.mixauth.loginchain.MccDriver;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -40,6 +41,7 @@ public class OnlineHandshakePendingIT extends LoginChainITBase {
     }
 
     @Test
+    @Disabled("等待补充 Online known_players 测试夹具")
     @DisplayName("在线握手：正常在线握手 → 以 Online 模式入服")
     public void onlineHandshakeM1() throws Exception {
         presetKnownPlayer("OnlineTester");
@@ -55,6 +57,7 @@ public class OnlineHandshakePendingIT extends LoginChainITBase {
     }
 
     @Test
+    @Disabled("等待补充 Online known_players 测试夹具")
     @DisplayName("在线握手：hasJoined 返回 500 → 断线且不回退离线")
     public void hasJoined500Disconnects() throws Exception {
         presetKnownPlayer("HasJoinedTester");
