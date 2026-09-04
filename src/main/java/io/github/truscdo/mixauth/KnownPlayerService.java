@@ -6,19 +6,15 @@ import io.github.truscdo.mixauth.db.KnownPlayerDao;
 import io.github.truscdo.mixauth.online.OnlineAuthService;
 
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 已知玩家名单服务：业务逻辑（登录模式解析、LOGIN_MODES、管理流程）。
+ * 已知玩家名单服务：业务逻辑（登录模式解析、管理流程）。
  * <p>
  * IO 全部经 {@link AuthStore} 门面：读同步自门控；非关键写缓存先行 + write-behind。
  * </p>
  */
 public final class KnownPlayerService {
-    private static final Map<UUID, OnlineAuthService.LoginMode> LOGIN_MODES = new ConcurrentHashMap<>();
-
     private KnownPlayerService() {
     }
 
@@ -56,16 +52,9 @@ public final class KnownPlayerService {
         }
     }
 
-    /**
-     * 记录玩家登录模式（非关键写，write-behind，缓存先行；减写收进 AuthStore）。
-     * <p>
-     * 同时把模式预置到内存映射（markLoginMode），供玩家进服（PlayerLoggedInEvent）
-     * 消费以启动离线认证提示——否则 onPlayerLoggedIn 的 consumeLoginMode 恒为 null，
-     * 离线 LOGIN/REGISTER 提示不会触发。
-     */
+    /** 记录玩家登录模式（非关键写，write-behind，缓存先行；减写收进 AuthStore）。 */
     public static void recordKnownPlayer(UUID playerUuid, String username, OnlineAuthService.LoginMode mode) {
         AuthStore.recordKnown(playerUuid, username, mode);
-        markLoginMode(playerUuid, mode);
     }
 
     /**
@@ -76,26 +65,7 @@ public final class KnownPlayerService {
         if (playerUuid == null) {
             return false;
         }
-        LOGIN_MODES.remove(playerUuid);
         return AuthStore.removePlayer(playerUuid).join();
-    }
-
-    /**
-     * 消费内存中的登录模式（用于 PlayerLoggedInEvent）。
-     */
-    public static OnlineAuthService.LoginMode consumeLoginMode(UUID playerUuid) {
-        return LOGIN_MODES.remove(playerUuid);
-    }
-
-    /**
-     * 将登录模式预置到内存映射，供玩家进服（PlayerLoggedInEvent）时消费。
-     * <p>
-     * 公开可见性：GameTest 集成测试需要跨包预置登录模式以驱动进服路由分支。
-     */
-    public static void markLoginMode(UUID playerUuid, OnlineAuthService.LoginMode loginMode) {
-        if (playerUuid != null) {
-            LOGIN_MODES.put(playerUuid, loginMode);
-        }
     }
 
     /** 管理命令用户名精确查找：内存索引服务（经 AuthStore，自门控保证索引完整）。 */

@@ -15,11 +15,11 @@ import java.util.UUID;
 /**
  * 进服路由测试。
  * <p>
- * 覆盖 {@code AuthServerEvents.onPlayerLoggedIn} 的分支：按登录模式（未预置 / OFFLINE /
+ * 覆盖 {@code AuthServerEvents.onPlayerLoggedIn} 的分支：按登录上下文（缺失 / OFFLINE /
  * ONLINE）
  * 与注册、IP 信任状态，验证玩家进服后的待认证阶段与提示消息。
  * <p>
- * 触发方式：预置登录模式（markLoginMode）→ placeNewPlayer 进服 → 真实 PlayerLoggedInEvent
+ * 触发方式：向 mock Connection 发布 LoginContext → placeNewPlayer 进服 → 真实 PlayerLoggedInEvent
  * → AuthServerEvents.onPlayerLoggedIn 路由分支。
  * <p>
  * 消息断言一律用「存在检查」（{@link AuthGameTestBase#assertAnyMessage}）而非「最后一条」
@@ -39,13 +39,15 @@ public class LoginRoutingGameTest extends AuthGameTestBase {
 
     @GameTest
     @EmptyTemplate
-    @TestHolder(description = { "未预置登录模式进服：不触发认证路由，无待认证状态，无提示" })
+    @TestHolder(description = { "offline-mode 缺少登录上下文：fail-close" })
     static void noPresetMode(AuthGameTestBase helper) {
         UUID uuid = offlineUuid("RouteNoMode");
         helper.resetPlayerData(uuid);
         GameTestPlayer player = helper.joinServer("RouteNoMode", uuid, null, FAKE_IP);
-        helper.assertNoPending(player);
-        helper.succeed();
+        helper.startSequence()
+                .thenExecuteAfter(1, () -> helper.assertTrue(!player.connection.getConnection().isConnected(),
+                        "expected missing login context to disconnect player"))
+                .thenSucceed();
     }
 
     @GameTest
@@ -103,13 +105,6 @@ public class LoginRoutingGameTest extends AuthGameTestBase {
     }
 
     // ---------------------------------------------------------------- 生产路径
-
-    /**
-     * 以上用例均经 {@code joinServer}（直接 markLoginMode）驱动，绕过生产方法
-     * {@code recordKnownPlayer}。以下用例改走与 mixin 登录记录分支完全一致的生产 API
-     * （joinServerViaRecordedLogin），可捕获 {@code recordKnownPlayer} 内部丢失
-     * {@code markLoginMode} 调用的回归（历史回归 393e922）。
-     */
 
     @GameTest
     @EmptyTemplate

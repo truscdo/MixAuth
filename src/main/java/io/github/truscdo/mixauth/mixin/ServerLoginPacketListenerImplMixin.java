@@ -9,6 +9,8 @@ import io.github.truscdo.mixauth.offline.PlayerIdentityService;
 import io.github.truscdo.mixauth.db.OfflineClientAliasDao;
 import io.github.truscdo.mixauth.localization.AuthLocalizedText;
 import io.github.truscdo.mixauth.localization.AuthTranslations;
+import io.github.truscdo.mixauth.login.LoginContexts;
+import io.github.truscdo.mixauth.login.LoginHandoffService;
 import io.github.truscdo.mixauth.validation.MojangClient;
 import io.github.truscdo.mixauth.validation.MojangClient.HasJoinedResult;
 import io.github.truscdo.mixauth.validation.MojangClient.PreLoginCheckResult;
@@ -228,6 +230,7 @@ abstract class ServerLoginPacketListenerImplMixin {
         this.auth$requestedProfileId = null;
         this.auth$canonicalOfflineProfile = null;
         OnlineHandshakeValidationService.clear(this.connection);
+        LoginContexts.clear(this.connection);
     }
 
     @Unique
@@ -267,7 +270,9 @@ abstract class ServerLoginPacketListenerImplMixin {
             }
 
             AUTH_LOGGER.info("auth validation continuing online login for {}", ProfileCompat.name(profile));
-            OnlineAuthService.recordOnlineLogin(profile);
+            if (!auth$completeLoginHandoff(OnlineAuthService.LoginMode.ONLINE, profile)) {
+                return;
+            }
             this.auth$startClientVerification(profile);
             return;
         }
@@ -306,8 +311,39 @@ abstract class ServerLoginPacketListenerImplMixin {
         }
 
         AUTH_LOGGER.info("auth OfflineGate accepted {}", ProfileCompat.name(canonicalOfflineProfile));
-        OfflineAuthService.recordOfflineLogin(canonicalOfflineProfile, clientUuid);
+        if (!auth$completeLoginHandoff(OnlineAuthService.LoginMode.OFFLINE, canonicalOfflineProfile)) {
+            return;
+        }
         this.auth$startClientVerification(canonicalOfflineProfile);
+    }
+
+    @Unique
+    private boolean auth$completeLoginHandoff(
+            OnlineAuthService.LoginMode mode,
+            GameProfile authenticatedProfile) {
+        try {
+            boolean published = mode == OnlineAuthService.LoginMode.ONLINE
+                    ? LoginHandoffService.completeOnlineLogin(
+                            this.connection, this.auth$requestedProfileId, authenticatedProfile)
+                    : LoginHandoffService.completeOfflineLogin(
+                            this.connection, this.auth$requestedProfileId, authenticatedProfile);
+            if (published) {
+                return true;
+            }
+            AUTH_LOGGER.error(
+                    "Refused duplicate login context for {} from {}",
+                    ProfileCompat.name(authenticatedProfile),
+                    this.connection.getRemoteAddress());
+        } catch (RuntimeException runtimeException) {
+            AUTH_LOGGER.error(
+                    "Failed to complete login handoff for {} from {}",
+                    ProfileCompat.name(authenticatedProfile),
+                    this.connection.getRemoteAddress(),
+                    runtimeException);
+        }
+        this.disconnect(AuthTranslations.componentForConfiguredLanguage(
+                "auth.validation.reason.server_internal_error"));
+        return false;
     }
 
     @Unique

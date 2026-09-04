@@ -24,10 +24,6 @@ public final class OnlineAuthService {
         LOGGER.info("Recorded online login for {}", ProfileCompat.name(profile));
     }
 
-    public static LoginMode consumeLoginMode(UUID playerUuid) {
-        return KnownPlayerService.consumeLoginMode(playerUuid);
-    }
-
     public enum LoginMode {
         ONLINE,
         OFFLINE;

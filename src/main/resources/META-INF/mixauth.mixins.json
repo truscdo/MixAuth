@@ -4,6 +4,7 @@
     "package": "io.github.truscdo.mixauth.mixin",
     "compatibilityLevel": "JAVA_21",
     "mixins": [
+        "ConnectionMixin",
         "ServerLoginPacketListenerImplMixin"
     ],
     "client": [],

@@ -4,6 +4,9 @@ import com.mojang.authlib.GameProfile;
 import io.github.truscdo.mixauth.AuthServerConfig;
 import io.github.truscdo.mixauth.KnownPlayerService;
 import io.github.truscdo.mixauth.cache.AuthStore;
+import io.github.truscdo.mixauth.login.LoginContext;
+import io.github.truscdo.mixauth.login.LoginContexts;
+import io.github.truscdo.mixauth.login.LoginHandoffService;
 import io.github.truscdo.mixauth.offline.OfflineAuthService;
 import io.github.truscdo.mixauth.offline.OfflineAuthSessionService;
 import io.github.truscdo.mixauth.online.OnlineAuthService;
@@ -35,7 +38,7 @@ import java.util.function.BooleanSupplier;
 /**
  * GameTest 集成测试基类。
  * <p>
- * 封装「自定义身份（用户名 + 离线 UUID）mock 玩家创建 + 假 IP 注入 + 登录模式预置 +
+ * 封装「自定义身份（用户名 + 离线 UUID）mock 玩家创建 + 假 IP 注入 + 登录上下文发布 +
  * 认证状态/消息断言 + 命令执行」等辅助能力。
  * <p>
  * 用法：测试方法声明为 {@code static}，helper 参数类型为本类，框架通过
@@ -64,6 +67,10 @@ public class AuthGameTestBase extends ExtendedGameTestHelper {
      * @return 已在服务器中的 GameTestPlayer
      */
     protected GameTestPlayer createMockPlayer(String username, UUID uuid, String fakeIp) {
+        return placeMockPlayer(prepareMockPlayer(username, uuid, fakeIp));
+    }
+
+    private PreparedMockPlayer prepareMockPlayer(String username, UUID uuid, String fakeIp) {
         GameProfile profile = new GameProfile(uuid, username);
         CommonListenerCookie cookie = CommonListenerCookie.createInitial(profile, false);
         ServerLevel level = getLevel();
@@ -74,7 +81,15 @@ public class AuthGameTestBase extends ExtendedGameTestHelper {
         new EmbeddedChannel(connection);
         NetworkRegistry.configureMockConnection(connection);
 
-        level.getServer().getPlayerList().placeNewPlayer(connection, player, cookie);
+        return new PreparedMockPlayer(player, connection, cookie);
+    }
+
+    private GameTestPlayer placeMockPlayer(PreparedMockPlayer prepared) {
+        ServerLevel level = getLevel();
+        GameTestPlayer player = prepared.player();
+        MockPlayerConnection connection = prepared.connection();
+
+        level.getServer().getPlayerList().placeNewPlayer(connection, player, prepared.cookie());
         level.getServer().getConnection().getConnections().add(connection);
         testInfo.addListener(player);
 
@@ -85,41 +100,54 @@ public class AuthGameTestBase extends ExtendedGameTestHelper {
         return player;
     }
 
-    /**
-     * 预置登录模式后让玩家进服（进服路由测试入口）。
-     * <p>
-     * 注意：本方法直接 {@code markLoginMode} 预置内存映射，<b>绕过了生产路径
-     * {@code recordKnownPlayer}</b>。若该生产方法内部丢失 {@code markLoginMode} 调用
-     * （历史回归 393e922），经本方法驱动的用例无法发现——需要覆盖生产链路时请改用
-     * {@link #joinServerViaRecordedLogin}。
-     *
-     * @param mode 预置的登录模式（null 表示不预置 → 无路由）
-     */
     protected GameTestPlayer joinServer(String username, UUID uuid, OnlineAuthService.LoginMode mode, String fakeIp) {
-        if (mode != null) {
-            KnownPlayerService.markLoginMode(uuid, mode);
-        }
-        return createMockPlayer(username, uuid, fakeIp);
+        return joinServer(username, uuid, uuid, mode, fakeIp);
     }
 
-    /**
-     * 经真实生产登录记录 API 预置模式后进服（进服路由测试的「生产路径」入口）。
-     * <p>
-     * 与 {@link #joinServer} 的区别：本方法调用与 mixin 登录记录分支完全一致的生产 API
-     * （OFFLINE → {@code OfflineAuthService.recordOfflineLogin}，ONLINE →
-     * {@code OnlineAuthService.recordOnlineLogin}），再 placeNewPlayer 触发真实
-     * {@code PlayerLoggedInEvent}。若 {@code recordKnownPlayer} 内部再次丢失
-     * {@code markLoginMode} 调用，进服后 {@code consumeLoginMode} 将返回 null，
-     * 离线 LOGIN/REGISTER 提示不触发，此类用例即可捕获回归。
-     */
+    protected GameTestPlayer joinServer(String username, UUID authenticatedUuid, UUID requestedUuid,
+            OnlineAuthService.LoginMode mode, String fakeIp) {
+        PreparedMockPlayer prepared = prepareMockPlayer(username, authenticatedUuid, fakeIp);
+        if (mode != null) {
+            boolean published = LoginContexts.publish(prepared.connection(), new LoginContext(
+                    mode, requestedUuid, authenticatedUuid, username, System.currentTimeMillis()));
+            if (!published) {
+                throw new IllegalStateException("Failed to publish mock login context");
+            }
+        }
+        return placeMockPlayer(prepared);
+    }
+
+    protected GameTestPlayer joinServerWithContext(String username, UUID authenticatedUuid,
+            LoginContext context, String fakeIp) {
+        PreparedMockPlayer prepared = prepareMockPlayer(username, authenticatedUuid, fakeIp);
+        if (!LoginContexts.publish(prepared.connection(), context)) {
+            throw new IllegalStateException("Failed to publish mock login context");
+        }
+        return placeMockPlayer(prepared);
+    }
+
+    /** 在 placeNewPlayer 前使用生产环境的持久化与发布交接流程。 */
     protected GameTestPlayer joinServerViaRecordedLogin(String username, UUID uuid,
             OnlineAuthService.LoginMode mode, String fakeIp) {
+        return joinServerViaRecordedLogin(username, uuid, uuid, mode, fakeIp);
+    }
+
+    protected GameTestPlayer joinServerViaRecordedLogin(String username, UUID authenticatedUuid, UUID requestedUuid,
+            OnlineAuthService.LoginMode mode, String fakeIp) {
+        PreparedMockPlayer prepared = prepareMockPlayer(username, authenticatedUuid, fakeIp);
+        GameProfile profile = new GameProfile(authenticatedUuid, username);
+        boolean published;
         if (mode == OnlineAuthService.LoginMode.OFFLINE) {
-            OfflineAuthService.recordOfflineLogin(uuid, username);
+            published = LoginHandoffService.completeOfflineLogin(prepared.connection(), requestedUuid, profile);
         } else if (mode == OnlineAuthService.LoginMode.ONLINE) {
-            OnlineAuthService.recordOnlineLogin(new GameProfile(uuid, username));
+            published = LoginHandoffService.completeOnlineLogin(prepared.connection(), requestedUuid, profile);
+        } else {
+            return placeMockPlayer(prepared);
         }
-        return createMockPlayer(username, uuid, fakeIp);
+        if (!published) {
+            throw new IllegalStateException("Failed to publish production login context");
+        }
+        return placeMockPlayer(prepared);
     }
 
     /** 基于用户名计算离线模式 UUID（与服务器 UUIDUtil.createOfflineProfile 一致）。 */
@@ -334,5 +362,11 @@ public class AuthGameTestBase extends ExtendedGameTestHelper {
         public SocketAddress getRemoteAddress() {
             return remoteAddress != null ? remoteAddress : super.getRemoteAddress();
         }
+    }
+
+    private record PreparedMockPlayer(
+            GameTestPlayer player,
+            MockPlayerConnection connection,
+            CommonListenerCookie cookie) {
     }
 }
