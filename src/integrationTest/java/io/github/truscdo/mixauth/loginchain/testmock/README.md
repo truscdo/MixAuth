@@ -1,16 +1,20 @@
 # mock-sessionserver
 
-模拟 Mojang sessionserver 两个端点（测试专用，无第三方依赖，仅 JDK 标准库）：
+模拟 Mojang/Yggdrasil 服务端点（测试专用，无第三方依赖，仅 JDK 标准库）：
 
 - `GET /minecraft/profile/lookup/name/{name}` — pre-login profile 预检查
 - `GET /session/minecraft/hasJoined?username=...&serverId=...` — 在线会话校验
+- `POST /authserver/authenticate` — 测试 Yggdrasil 登录
+- `POST /sessionserver/session/minecraft/join` — 测试 Yggdrasil 会话加入
 
 ## 运行
 
-JDK 单文件源码启动（无需编译）：
+JDK 标准库直接编译启动：
 
 ```bash
-java MockSessionServer.java --port 18080 --profile-mode online --hasjoined-mode online
+javac -d out Mock*.java
+java -cp out io.github.truscdo.mixauth.loginchain.testmock.MockSessionServer \
+  --port 18080 --profile-mode online --hasjoined-mode online
 ```
 
 ## 参数
@@ -20,7 +24,8 @@ java MockSessionServer.java --port 18080 --profile-mode online --hasjoined-mode 
 | `--port` | 端口 | 8080 | 仅监听 127.0.0.1 |
 | `--profile-mode` | `online`/`404`/`429`/`500`/`malformed`/`empty` | `online` | profile lookup 响应模式 |
 | `--hasjoined-mode` | `online`/`404`/`500`/`malformed` | `online` | hasJoined 响应模式 |
-| `--profile-uuid` | UUID（可带横线） | `00000000-0000-0000-0000-000000000001` | profile 返回的 UUID |
+
+所有成功 profile 响应的 UUID 都按 `UUID.nameUUIDFromBytes(("YggdrasilTest:" + username).getBytes(UTF_8))` 生成。
 
 ## 模式说明
 
@@ -37,6 +42,8 @@ java MockSessionServer.java --port 18080 --profile-mode online --hasjoined-mode 
 -Dmixauth.profile_lookup_url=http://127.0.0.1:18080/minecraft/profile/lookup/name/
 -Dmixauth.has_joined_url=http://127.0.0.1:18080/session/minecraft/hasJoined
 ```
+
+MCC 的 Yggdrasil `AuthServerUrl` 指向 `http://127.0.0.1:18080/`，因此认证和 join 请求也由同一个 mock 接收。
 
 ## 验证
 

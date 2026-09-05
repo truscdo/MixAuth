@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 
 public final class MccDriver {
+    private static final String YGGDRASIL_PASSWORD = "test-password";
 
     private MccDriver() {
     }
@@ -25,6 +26,16 @@ public final class MccDriver {
      * @param nojoin 为 true 时不等待成功入服（客户端预期在登录前失败时使用）
      */
     public static MccRun launch(String id, String user, boolean nojoin) throws IOException {
+        return launchProcess(id, user, nojoin, false);
+    }
+
+    /** Start MCC against the local Yggdrasil test service. */
+    public static MccRun launchYggdrasil(String id, String user, boolean nojoin) throws IOException {
+        return launchProcess(id, user, nojoin, true);
+    }
+
+    private static MccRun launchProcess(String id, String user, boolean nojoin, boolean yggdrasil)
+            throws IOException {
         String mcc = LctConfig.mccExe();
         if (mcc == null) {
             throw new IllegalStateException(
@@ -35,9 +46,14 @@ public final class MccDriver {
         Path out = outLog(id);
         Files.writeString(in, "", StandardCharsets.UTF_8); // create empty input
         Files.deleteIfExists(out);
-        writeIni(id, user);
+        if (yggdrasil) {
+            writeYggdrasilIni(id, user);
+        } else {
+            writeIni(id, user);
+        }
 
-        List<String> cmd = List.of(mcc, ini(id).toString(), user, "-",
+        String password = yggdrasil ? YGGDRASIL_PASSWORD : "-";
+        List<String> cmd = List.of(mcc, ini(id).toString(), user, password,
                 "127.0.0.1:" + LctConfig.SPORT,
                 "--minecraftversion=" + LctConfig.MC, "--language=en");
         Map<String, String> env = Map.of("MCC_FILE_INPUT", "1", "MCC_INPUT_FILE", in.toString());
@@ -78,6 +94,31 @@ public final class MccDriver {
                 "Account = { Login = \"" + user + "\", Password = \"-\" }",
                 "Server = { Host = \"127.0.0.1\", Port = " + LctConfig.SPORT + " }",
                 "AccountType = \"mojang\"",
+                "MinecraftVersion = \"" + LctConfig.MC + "\"",
+                "[Main.Advanced]",
+                "ChatbotLogFile = \"" + chatFwd + "\"",
+                "Language = \"en\"",
+                "LoadMccTranslation = false",
+                "LoadResourcePackTranslations = false",
+                "EnableSentry = false",
+                "ExitOnFailure = true",
+                "InternalCmdChar = \"slash\"",
+                "SessionCache = \"none\"",
+                "ProfileKeyCache = \"none\"",
+                "[Console.General]",
+                "ConsoleColorMode = \"disable\"") + "\r\n";
+        Files.writeString(ini(id), content, StandardCharsets.UTF_8);
+    }
+
+    static void writeYggdrasilIni(String id, String user) throws IOException {
+        String chatFwd = chatLog(id).toString().replace('\\', '/');
+        String content = String.join("\r\n",
+                "[Main]",
+                "[Main.General]",
+                "Account = { Login = \"" + user + "\", Password = \"" + YGGDRASIL_PASSWORD + "\" }",
+                "Server = { Host = \"127.0.0.1\", Port = " + LctConfig.SPORT + " }",
+                "AccountType = \"yggdrasil\"",
+                "AuthServerUrl = \"http://127.0.0.1:" + LctConfig.MOCK_PORT + "/\"",
                 "MinecraftVersion = \"" + LctConfig.MC + "\"",
                 "[Main.Advanced]",
                 "ChatbotLogFile = \"" + chatFwd + "\"",
