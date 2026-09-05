@@ -79,8 +79,8 @@ gradlew.bat runGameTestServer
 
 用**真实服务器 + 真实无头客户端（MCC）**做黑盒 E2E，覆盖 GameTest 触达不到的联网分支与多版本适配，作为「登录链/适配器不崩」的守门。由 JUnit 5 驱动（独立源集 `src/integrationTest`），基类 `LoginChainITBase`（PER_CLASS）统一管理 mock、服务器与 MCC 子进程生命周期，逐场景做客户端/服务器双通道断言。
 
-- **离线注册/登录链**（`OfflineChainIT`，`@Tag offline`，按序执行）：注册提示 → `/register` 自动登录 → 重进 `/login` → 正确密码放行 → 连续错误密码 → 达上限临时封禁断线 → 封禁中重进被拒。
-- **在线预检**（`@Tag online`，本地 mock 覆盖 Mojang URL）：profile 查询返回 **429（限流）** / **畸形响应（解析失败）** 时的双通道表现；**在线加密握手**与 **hasJoined 500** 两场景暂 `@Disabled` 挂起（恢复条件见 `OnlineHandshakePendingIT` 源码注释）。
+- **离线注册/登录链**（`OfflineChainIT`，`@Tag offline`，4 次 MCC 连接按序执行）：mock 的 Mojang profile 预检固定返回 404，然后验证注册提示 → `/register` 自动登录 → 重进 `/login` → 正确密码放行 → 连续错误密码 → 达上限临时封禁断线 → 封禁中重进被拒。
+- **在线预检**（`OnlinePrefetchIT`，`@Tag online`，同类场景共享一次服务端）：本地 mock 覆盖 Mojang URL，验证 profile 查询返回 **429（限流）** / **畸形响应（解析失败）** 时的双通道表现；**在线加密握手**与 **hasJoined 500** 两场景暂 `@Disabled` 挂起（恢复条件见 `OnlineHandshakePendingIT` 源码注释）。
 
 ### 真实服务器运行方式
 
@@ -89,16 +89,16 @@ run-login-it.bat                          REM 默认两层全跑，全 6 版本�
 run-login-it.bat --online                 REM 仅在线预检
 run-login-it.bat --offline                REM 仅离线链
 run-login-it.bat 1.21.5                   REM 单版本
-run-login-it.bat 1.21.5 --online --tests "*OnlinePrefetch429IT*"   REM 单场景
+run-login-it.bat 1.21.5 --online --tests "*OnlinePrefetchIT.prefetch429RateLimited"   REM 单场景
 REM 等价直连（按层给 -Plct.layer=online|offline|all）：
 gradlew.bat integrationTest -Plct.layer=online -Pminecraft_version=1.21.5 ^
     -Pneo_version=21.5.98 -Pparchment_minecraft_version=1.21.5 ^
-    -Pparchment_mappings_version=2025.06.15 -Pminecraft_version_range="[1.21.5]" --tests "*OnlinePrefetch429IT*"
+    -Pparchment_mappings_version=2025.06.15 -Pminecraft_version_range="[1.21.5]" --tests "*OnlinePrefetchIT.prefetch429RateLimited"
 ```
 
 ### 说明
 
-- **生命周期由 JUnit 管理**：`@BeforeAll` 起 mock + 服务器（devlaunch 直启，注入 mock URL 与 `-Dfml.modFolders`）→ 场景内 MCC 双通道断言 → `@AfterAll` RCON 停服 + jstack 采样 + 兜底强杀；失败自动归档日志。
+- **构建与生命周期分离**：Gradle 在每个版本开始时只执行一次 `prepareServerRun/classes/createServerLaunchScript`；JUnit `@BeforeAll` 起 mock + 服务器（devlaunch 直启，注入 mock URL 与 `-Dfml.modFolders`）→ 场景内 MCC 双通道断言 → `@AfterAll` RCON 停服，只有退出超时才采集 jstack 并兜底强杀；日志自动归档。
 - 默认端口：游戏 `25565` / RCON `25575` / mock `18080`（可用 `MCC_EXE`、`MCC_DIR`、`RCON_PW`、`JAVA_HOME` 等覆盖；测试子进程的 java/jcmd 由 `LctConfig` 从 `JAVA_HOME` 自动解析）。
 - **唯一外部依赖是 MCC 二进制**（`MCC_EXE`/`MCC_DIR`），缺失时整层 **skip 而非失败**。
 - 报告：`build/reports/integrationTest/`（HTML）、`build/test-results/integrationTest/`（XML）；失败归档：`build/reports/integrationTest/artifacts/<场景>/`。

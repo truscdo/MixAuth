@@ -47,6 +47,9 @@ public final class LoginChainRunDir {
         Processes.deleteRecursive(mccBase());
         Files.createDirectories(mccBase());
 
+        Files.deleteIfExists(serverOut());
+        Files.deleteIfExists(mockLog());
+
         Path cfg = LctConfig.PROJECT.resolve("templates");
         Files.copy(cfg.resolve("eula.txt"), rd.resolve("eula.txt"), StandardCopyOption.REPLACE_EXISTING);
         Files.copy(cfg.resolve("server.properties"), rd.resolve("server.properties"),

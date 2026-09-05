@@ -49,7 +49,6 @@ goto :eof
   if exist build\resources rmdir /s /q build\resources
   if exist build\reports\integrationTest rmdir /s /q build\reports\integrationTest
 
-  set "L3_CLEAN_BUILD=false"
   call gradlew.bat integrationTest --no-configuration-cache %TEST_FILTERS% %EXTRA_ARGS% ^
     -Pminecraft_version=%~1 ^
     -Pneo_version=%~2 ^

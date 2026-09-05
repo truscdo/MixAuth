@@ -159,7 +159,7 @@ public final class IntegrationServerManager {
         }
     }
 
-    /** 停止服务器：RCON 停服 → jstack 采样 → 等待端口释放 → 超时强杀兜底。 */
+    /** 停止服务器：RCON 停服 → 等待端口释放 → 超时时采集 jstack 并强杀兜底。 */
     public void stop() {
         if (!started) {
             Processes.log("  stop server: not started, skip");
@@ -168,31 +168,36 @@ public final class IntegrationServerManager {
         Processes.log("=== stop server ===");
         long serverPid = serverProc == null ? -1 : serverProc.pid();
         rcon("stop");
-        Path jstack = LoginChainRunDir.runDir().resolve("logs/stop-jstack.txt");
-        try {
-            Files.deleteIfExists(jstack);
-            if (serverPid > 0) {
-                List<String> cmd = List.of(LctConfig.JCMD_BIN, String.valueOf(serverPid), "Thread.print");
-                Process p = Processes.startProc(cmd, null, jstack, null);
-                p.waitFor(8, TimeUnit.SECONDS);
-            }
-        } catch (Exception ignored) {
-        }
-
         int i = 0;
         while (i < 45) {
             if (!Processes.portListening(LctConfig.SPORT)) {
-                Processes.log("  server stopped");
                 break;
             }
             Processes.sleepMs(1000);
             i++;
         }
-        if (i >= 45) {
+        boolean exited = serverProc == null || Processes.waitExit(serverProc, i < 45 ? 15 : 1);
+        if (i >= 45 || !exited) {
+            captureThreadDump(serverPid);
             Processes.log("  stop timeout, killing " + (serverPid > 0 ? serverPid : "?"));
             Processes.kill(serverProc);
+        } else {
+            Processes.log("  server stopped");
         }
         started = false;
+    }
+
+    private void captureThreadDump(long serverPid) {
+        if (serverPid <= 0)
+            return;
+        Path jstack = LoginChainRunDir.runDir().resolve("logs/stop-jstack.txt");
+        try {
+            Files.deleteIfExists(jstack);
+            List<String> cmd = List.of(LctConfig.JCMD_BIN, String.valueOf(serverPid), "Thread.print");
+            Process p = Processes.startProc(cmd, null, jstack, null);
+            p.waitFor(8, TimeUnit.SECONDS);
+        } catch (Exception ignored) {
+        }
     }
 
     static String mockArgs() {

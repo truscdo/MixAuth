@@ -109,7 +109,7 @@ it() {
   echo "=== integrationTest（$LAYER：offline=离线链 / online=在线预检 / all=全部）MC $mc / NeoForge $neo ==="
   rm -rf build/classes build/libs build/resources build/reports/integrationTest
 
-  L3_CLEAN_BUILD=false ./gradlew integrationTest --no-configuration-cache \
+  ./gradlew integrationTest --no-configuration-cache \
     "${TEST_FILTER[@]}" \
     "${EXTRA[@]}" \
     -Pminecraft_version="$mc" \

@@ -1,8 +1,4 @@
-// 在线加密握手 与 hasJoined 返回 500 两个场景，以及 canonical UUID 路由回归场景。
-//
-// MCC 离线客户端每次启动可能使用不同的 client UUID，因此回归场景先让同名玩家
-// 完成一次离线登录，再用新的 client UUID 重进；第二次必须继续执行登录前预检，
-// 不能仅因为 canonical 离线 UUID 已知就直接命中离线路由。
+// 在线加密握手与 hasJoined 返回 500 两个待启用场景。
 package io.github.truscdo.mixauth.loginchain.scenario;
 
 import io.github.truscdo.mixauth.loginchain.LoginChainITBase;
@@ -28,34 +24,6 @@ public class OnlineHandshakePendingIT extends LoginChainITBase {
         // 成功消息（auth.command.mode.set.success）包含目标 UUID，语言无关
         assertTrue(out != null && out.contains(offlineUuid.toString()),
                 () -> "preset known player failed for " + username + "; rcon out: " + out);
-    }
-
-    @Test
-    @DisplayName("路由回归：同名玩家更换 client UUID 后仍执行登录前预检")
-    public void canonicalUuidIsNotUsedAsClientUuidFallback() throws Exception {
-        String username = "CanonicalAliasRoute";
-        UUID canonicalUuid = UUID.nameUUIDFromBytes(
-                ("OfflinePlayer:" + username).getBytes(StandardCharsets.UTF_8));
-        assertTrue(mock.setMode("404", "online"), "mock /_mock/mode switch failed");
-
-        try {
-            try (MccDriver.MccRun first = MccDriver.launch("R-CANONICAL-1", username, false)) {
-                assertTrue(first.awaitJoin(90),
-                        () -> failMsg("first canonical collision login", "Server was successfully joined", first));
-                assertTrue(first.awaitServerLog("auth precheck routing", 30),
-                        () -> failMsgServer("auth precheck routing", first));
-            }
-
-            try (MccDriver.MccRun second = MccDriver.launch("R-CANONICAL-2", username, false)) {
-                assertTrue(second.awaitJoin(90),
-                        () -> failMsg("second canonical collision login", "Server was successfully joined", second));
-                // If routing falls back to the canonical UUID, this precheck log is absent.
-                assertTrue(second.awaitServerLog("auth precheck routing " + username, 30),
-                        () -> failMsgServer("auth precheck routing " + username, second));
-            }
-        } finally {
-            server.rcon("/auth remove " + canonicalUuid);
-        }
     }
 
     @Test

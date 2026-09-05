@@ -35,8 +35,8 @@ public abstract class LoginChainITBase {
     protected static final String PASSWORD = "testpass123";
 
     /**
-     * 是否需要启动 mock sessionserver（模拟 Mojang）。在线预检层默认启动；
-     * 离线注册/登录链覆写为 false —— 离线登录从不查询 Mojang。
+     * 是否需要启动 mock sessionserver（模拟 Mojang）。登录链默认启动，
+     * 以便对登录前 profile 预检和在线验证提供可控响应。
      */
     protected boolean useMock() {
         return true;

@@ -39,7 +39,7 @@ public final class AuthServerEvents {
         LoginContext context = LoginContexts.take(connection);
 
         if (context == null) {
-            if (player.getServer().usesAuthentication()) {
+            if (player.level().getServer().usesAuthentication()) {
                 return;
             }
             LOGGER.error("Missing MixAuth login context for {} ({}) from {}",

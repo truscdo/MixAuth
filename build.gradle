@@ -232,6 +232,10 @@ def integrationTest = tasks.register('integrationTest', Test) {
     group = 'verification'
     testClassesDirs = sourceSets.integrationTest.output.classesDirs
     classpath = sourceSets.integrationTest.runtimeClasspath
+    // Prepare the dev-launch artifacts once per Gradle invocation. Previously every
+    // test class started a nested Gradle build from @BeforeAll, which also risked
+    // deleting the integration-test classes while the worker JVM was still using them.
+    dependsOn 'prepareServerRun', 'classes', 'createServerLaunchScript'
     def lctLayer = (project.findProperty('lct.layer') ?: System.getenv('LCT_LAYER') ?: 'all') as String
     useJUnitPlatform {
         if (lctLayer == 'all') {
@@ -249,10 +253,9 @@ def integrationTest = tasks.register('integrationTest', Test) {
     systemProperty 'lct.runDir', "${rootDir}/run-login/${project.minecraft_version}".toString()
     systemProperty 'lct.buildDir', layout.buildDirectory.get().asFile.absolutePath
     systemProperty 'lct.mccExe', System.getenv('MCC_EXE') ?: ''
-    systemProperty 'lct.cleanBuild', System.getenv('L3_CLEAN_BUILD') ?: 'true'
+    systemProperty 'lct.noBuild', 'true'
 
     maxParallelForks = 1
-    forkEvery = 1
     timeout = Duration.ofMinutes(20)
 
     reports.html.outputLocation.set(layout.buildDirectory.dir("reports/integrationTest"))
