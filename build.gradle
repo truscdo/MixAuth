@@ -1,7 +1,7 @@
 plugins {
     id 'java-library'
     id 'maven-publish'
-    id 'net.neoforged.moddev' version '2.0.141'
+    id 'net.neoforged.moddev' version '2.0.147'
     id 'idea'
 }
 
@@ -18,6 +18,11 @@ sourceSets.main.resources {
     exclude 'src/generated/**/.cache'
 }
 
+def modernMinecraftVersions = ['26.1.2', '26.2', '26.3'].contains(project.minecraft_version)
+def modernProfileAndPermissionVersions = ['1.21.11', '26.1.2', '26.2', '26.3']
+        .contains(project.minecraft_version)
+def mergedEntityInteractVersions = ['26.2', '26.3'].contains(project.minecraft_version)
+
 // 承载解包后的 testframework 的源集（见 neoForge.mods 块注释）
 sourceSets {
     testframeworkMod
@@ -32,21 +37,20 @@ if (project.minecraft_version == '1.21.0' || project.minecraft_version == '1.21.
         element.name == 'TeleportCompat.java'
                 && element.file.absolutePath.replace('\\', '/').contains('/src/main/java/')
     }
-    if (project.minecraft_version == '1.21.11' || project.minecraft_version == '26.1.2'
-            || project.minecraft_version == '26.2') {
+    if (modernProfileAndPermissionVersions) {
         // 1.21.11 权限系统重构 + authlib GameProfile record 化：叠加第三源集承载
         // PermissionCompat / ProfileCompat 覆盖实现，并排除主目录基础版（避免重复类）
-        // 26.1.2 / 26.2 复用同一覆盖实现
+        // 26.1.2 / 26.2 / 26.3 复用同一覆盖实现
         sourceSets.main.java.srcDir 'src/neo-1.21.11/java'
         sourceSets.main.java.exclude { element ->
             (element.name == 'PermissionCompat.java' || element.name == 'ProfileCompat.java')
                     && element.file.absolutePath.replace('\\', '/').contains('/src/main/java/')
         }
     }
-    if (project.minecraft_version == '26.2') {
-        // 26.2 移除 PlayerInteractEvent.EntityInteractSpecific（interactAt 合并进
-        // EntityInteract）：叠加第四源集承载 EntityInteractCompat 空实现，
-        // 并排除主目录基础版（避免重复类）
+    if (mergedEntityInteractVersions) {
+        // 26.2 起移除 PlayerInteractEvent.EntityInteractSpecific（interactAt 合并进
+        // EntityInteract）：叠加版本适配源集承载 EntityInteractCompat 空实现，
+        // 并排除主目录基础版（避免重复类）。26.3 继续复用 26.2 实现。
         sourceSets.main.java.srcDir 'src/neo-26.2/java'
         sourceSets.main.java.exclude { element ->
             element.name == 'EntityInteractCompat.java'
@@ -69,7 +73,7 @@ base {
 }
 
 // 26.1 起 Minecraft 使用 Java 25；既有 1.21.x 线保持 Java 21
-if (project.minecraft_version == '26.1.2' || project.minecraft_version == '26.2') {
+if (modernMinecraftVersions) {
     java.toolchain.languageVersion = JavaLanguageVersion.of(25)
 } else {
     java.toolchain.languageVersion = JavaLanguageVersion.of(21)
@@ -79,7 +83,7 @@ neoForge {
     version = project.neo_version
 
     // 26.1 起 Mojang 移除混淆，官方参数名直接可用，Parchment 不再必需
-    if (project.minecraft_version != '26.1.2' && project.minecraft_version != '26.2') {
+    if (!modernMinecraftVersions) {
         parchment {
             mappingsVersion = project.parchment_mappings_version
             minecraftVersion = project.parchment_minecraft_version
@@ -192,9 +196,8 @@ dependencies {
         }
     }
     // additionalRuntimeClasspath 配置 1.21.11 起被 moddev 移除（构建报错提示），
-    // 该配置仅用于 dev 运行时 classpath；1.21.11 起改用标准 runtimeOnly（26.1.2/26.2 同）。
-    if (project.minecraft_version == '1.21.11' || project.minecraft_version == '26.1.2'
-            || project.minecraft_version == '26.2') {
+    // 该配置仅用于 dev 运行时 classpath；1.21.11 起改用标准 runtimeOnly（26.1.2/26.2/26.3 同）。
+    if (modernProfileAndPermissionVersions) {
         runtimeOnly 'at.favre.lib:bcrypt:0.10.2'
         runtimeOnly 'at.favre.lib:bytes:1.5.0'
     } else {
@@ -207,8 +210,7 @@ dependencies {
             prefer '2.4.240'
         }
     })
-    if (project.minecraft_version == '1.21.11' || project.minecraft_version == '26.1.2'
-            || project.minecraft_version == '26.2') {
+    if (modernProfileAndPermissionVersions) {
         runtimeOnly 'com.h2database:h2:2.4.240'
     } else {
         additionalRuntimeClasspath 'com.h2database:h2:2.4.240'

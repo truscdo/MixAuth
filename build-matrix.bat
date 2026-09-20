@@ -1,40 +1,28 @@
 @echo off
-rem MixAuth 多版本构建矩阵（每主流版本单独构建）
-rem
-rem 用法：
-rem   build-matrix.bat             构建全部 4 个主流版本
-rem   build-matrix.bat 1.21.5      只构建指定版本
-rem
-rem 说明：
-rem   - 通过 -P 覆盖 gradle.properties 中的版本属性（Gradle 优先级：命令行 > gradle.properties）
-rem   - 产物归档到 dist/<mc>/，命名 mixauth-<mc>-<mod_version>.jar
 
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
 chcp 65001 >nul
 
-rem 加载 .env（若存在）：JDK25_HOME / MCC_DIR 等机器特定配置集中于此
 call :load-env
 
 set "ONLY=%~1"
 
-rem 版本矩阵单一数据源：version-matrix.txt（mc|neo|parchmentMc|parchmentMap|mcRange）
 for /f "usebackq eol=# tokens=1-5 delims=|" %%a in ("%~dp0version-matrix.txt") do (
   call :build %%a %%b %%c %%d "%%e"
 )
 goto :eof
 
 :build
-  rem 指定版本时只构建匹配项
   if not "%ONLY%"=="" if not "%ONLY%"=="%~1" goto :eof
 
-  rem 26.1 起 Minecraft 使用 Java 25，Gradle 守护进程须以 JDK 25 运行
-  rem （JDK 21 守护进程下载 NeoForge Maven 依赖时 TLS 握手失败）；
-  rem 其余版本沿用系统默认 JDK（21）。
   if "%~1"=="26.1.2" (
     call :resolve-jdk25
     set "JAVA_HOME=%JDK25%"
   ) else if "%~1"=="26.2" (
+    call :resolve-jdk25
+    set "JAVA_HOME=%JDK25%"
+  ) else if "%~1"=="26.3" (
     call :resolve-jdk25
     set "JAVA_HOME=%JDK25%"
   ) else (
@@ -43,19 +31,9 @@ goto :eof
 
   echo === 构建 MixAuth for MC %~1 / NeoForge %~2 ===
 
-  rem 删除上一版本遗留的编译产物与 jar，强制 compileJava + jar 重新执行。
-  rem 实测：跨版本切换时 Gradle 会把 compileJava/jar 误判为 up-to-date
-  rem （配置缓存仅按 -P 属性名键控、不按值），导致沿用旧版本类或不产 jar。
-  rem 保留 build/moddev 与 build/tmp，以复用各版本 minecraft artifact 缓存。
   if exist build\libs rmdir /s /q build\libs
   if exist build\classes rmdir /s /q build\classes
 
-  rem 生产构建用 assemble 而非 build：java 插件的 build 生命周期默认包含
-  rem check → test → compileTestJava，会把 dev 专属的测试 mod（src/test 下的
-  rem @Mod("mixauth_tests") 与 GameTest 测试）编译进每个目标版本，且其引用的
-  rem vanilla API（如 1.21.2+ 移除的 @GameTest）会阻塞跨版本构建。
-  rem assemble 只产出 jar + jarJar（生产产物），测试仅在 dev 的 gameTestServer 验证。
-  rem --no-configuration-cache：避免跨版本复用配置缓存造成 up-to-date 误判
   call gradlew.bat assemble --no-configuration-cache ^
     -Pminecraft_version=%~1 ^
     -Pneo_version=%~2 ^
@@ -68,7 +46,6 @@ goto :eof
     exit /b 1
   )
 
-  rem 归档产物（整目录重建避免残留旧版本 jar；只拷当前版本命名的产物）
   if exist dist\%~1 rmdir /s /q dist\%~1
   mkdir dist\%~1 2>nul
 
@@ -89,11 +66,6 @@ goto :eof
   goto :eof
 
 :resolve-jdk25
-  rem 解析 JDK 25 安装路径（不硬编码任何机器特定目录）：
-  rem   1) JDK25_HOME 环境变量（推荐，如 set JDK25_HOME=C:\path\to\jdk-25）
-  rem   2) JAVA_HOME（若其 release 文件声明 Java 25）
-  rem   3) 常见安装位置自动探测（Program Files / LocalAppData 下的 jdk-25*）
-  rem   4) 均未找到 → 报错退出
   set "JDK25="
   if defined JDK25_HOME if exist "%JDK25_HOME%\bin\java.exe" set "JDK25=%JDK25_HOME%"
   if not defined JDK25 if defined JAVA_HOME if exist "%JAVA_HOME%\bin\java.exe" (
@@ -112,8 +84,6 @@ goto :eof
   goto :eof
 
 :load-env
-  rem 加载项目根目录 .env（若存在）：每行 KEY=VALUE，# 开头为注释。
-  rem 已定义的环境变量优先，.env 仅填充缺失项（系统级/命令行设置优先）。
   if not exist ".env" goto :eof
   for /f "usebackq eol=# tokens=1,* delims==" %%A in (".env") do (
     if not defined %%A set "%%A=%%B"

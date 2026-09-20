@@ -38,6 +38,9 @@ goto :eof
   ) else if "%~1"=="26.2" (
     call :resolve-jdk25
     set "JAVA_HOME=%JDK25%"
+  ) else if "%~1"=="26.3" (
+    call :resolve-jdk25
+    set "JAVA_HOME=%JDK25%"
   ) else (
     set "JAVA_HOME="
   )

@@ -45,7 +45,7 @@ public final class OfflineAuthSessionService {
         bus.addListener(OfflineAuthSessionService::onServerChat);
         bus.addListener(OfflineAuthSessionService::onAttackEntity);
         // 右键实体特定部位（interactAt，如剪羊毛/挤奶）拦截：26.2 起事件移除，
-        // 由 EntityInteractCompat 适配器按版本决定是否注册（26.2 为空操作）。
+        // 由 EntityInteractCompat 适配器按版本决定是否注册（26.2+ 为空操作）。
         EntityInteractCompat.registerSpecificInteractGuard(bus);
         bus.addListener(OfflineAuthSessionService::onEntityInteract);
         bus.addListener(OfflineAuthSessionService::onRightClickBlock);

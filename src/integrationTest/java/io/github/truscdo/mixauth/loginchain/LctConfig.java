@@ -8,9 +8,9 @@
 // JDK 解析：JAVA_HOME 优先（run-login-it.bat 已按版本设置），其次 JDK_EXE
 // （IDE 直跑时的可选覆盖），最后 PATH。
 //
-// 版本目录固定支持 6 个版本：1.21.1 / 1.21.5 / 1.21.8 / 1.21.11 / 26.1 / 26.2。
+// 版本目录覆盖 version-matrix.txt 中的版本；26.3 的 NeoForge 构建当前为 Beta。
 // 26.1 起无需 Parchment（官方参数名可用），parchment 字段传占位符 "-"，
-// build.gradle 的 26.1/26.2 分支不读取；此处仅用于 IDE 直跑测试时的目录回退。
+// build.gradle 的 26.1/26.2/26.3 分支不读取；此处仅用于 IDE 直跑测试时的目录回退。
 // ============================================================================
 package io.github.truscdo.mixauth.loginchain;
 
@@ -23,7 +23,7 @@ import java.util.Map;
 
 public final class LctConfig {
 
-    // ---- 支持的版本目录（6 个版本）----
+    // ---- 支持的版本目录 ----
     public record Version(String neo, String parchmentMc, String parchmentMap, String mcRange) {
     }
 
